@@ -69,7 +69,7 @@ Questions on PA1
 - No "Return" Keyword, which is extremely inconvenient.
 - Strange use of "if" and "while".
 
-How to use semicolon legelly?
+How to use semicolon legally?
 ---
 1. In a block, every sentence should end with a semicolon. For example: `let s : Int in {};` or `while loop {} pool;`
 2. A sentence ends without semicolon can be used as return value, but there are some restricitions:
