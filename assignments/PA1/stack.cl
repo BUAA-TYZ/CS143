@@ -38,10 +38,12 @@ class StackNode {
 
 class Stack {
    io : IO <- new IO;
+   length : Int;
    top : StackNode;
 
    init() : Stack {
       {
+         length <- 0;
          top <- (new StackNode).init(new StackNode, "");
          self;
       }
@@ -49,22 +51,29 @@ class Stack {
 
    push(val : String) : Object {
       {
+         length <- length + 1;
          top <- (new StackNode).init(top, val);
       }
    };
 
    pop() : String {
-      if top.getVal() =  "" then {
+      if length = 0 then {
          abort();
          "";
-      } else 
+      } else {
+         length <- length - 1;
          let res : String <- top.getVal() in {
             top <- top.getNext();
             res;
-         }
+         };
+      }
       fi
    };
 
+   getlength() : Int {
+      length
+   };
+ 
    getTopVal() : String {
       top.getVal()
    };
@@ -81,34 +90,41 @@ class Stack {
    };
 };
 
-
 class Main inherits A2I {
    
    io: IO <- new IO;
-
    stack: Stack <- (new Stack).init();
 
    doOp() : Object {
       let topVal : String <- stack.getTopVal() in {
          if topVal = "+" then {
-            stack.pop();
-            let val1 : Int <- a2i(stack.pop()), val2 : Int <- a2i(stack.pop()) in {
-               topVal <- i2a(val1 + val2);
-               stack.push(topVal);
-            };
+            if stack.getlength() < 3 then {
+               io.out_string("Add op oeeds at least two integers.");
+               abort();
+            } else {
+               stack.pop();
+               let val1 : Int <- a2i(stack.pop()), val2 : Int <- a2i(stack.pop()) in {
+                  topVal <- i2a(val1 + val2);
+                  stack.push(topVal);
+               };
+            }
+            fi;
          } else
             if topVal = "s" then {
-               stack.pop();
-               let val1 : String <- stack.pop(), val2 : String <- stack.pop() in {
-                  stack.push(val1);
-                  stack.push(val2);
-               };
+               if stack.getlength() < 3 then {
+                  io.out_string("Swap op oeeds at least two integers.");
+                  abort();
+               } else {
+                  stack.pop();
+                  let val1 : String <- stack.pop(), val2 : String <- stack.pop() in {
+                     stack.push(val1);
+                     stack.push(val2);
+                  };
+               } fi;
             } else
                ""
             fi
          fi;
-         -- ; is necessary.
-         topVal;
       }
    };
 
