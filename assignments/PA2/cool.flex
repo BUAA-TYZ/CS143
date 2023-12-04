@@ -205,16 +205,6 @@ f[Aa][Ll][Ss][Ee] {
   }
 }
 
-\(  return 40;
-\)  return 41;
-\*  return 42;
-\+  return 43;
-\,  return 44;
-\-  return 45;
-\/  return 47;
-:   return 58; 
-;   return 59; 
-
  /*
   *  OBJECTID. 
   */
