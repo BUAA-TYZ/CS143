@@ -19,7 +19,7 @@ ID  [a-zA-Z][a-zA-Z0-9]*
     printf("A float: %s (%g)\n", yytext, atof(yytext));
   }
 
-if|then|begin|end|procedure|function {
+(?i:if|then|begin|end|procedure|function) {
     printf("A Keyword: %s\n", yytext);
   }
 
