@@ -49,7 +49,12 @@ extern YYSTYPE cool_yylval;
  * Define names for regular expressions here.
  */
 
-DARROW          =>
+DARROW  =>
+DIGIT  [0-9]
+CHAR   [a-zA-Z0-9_]
+
+%x  str
+%x  cmt
 
 %%
 
@@ -57,17 +62,92 @@ DARROW          =>
   *  Nested comments
   */
 
+ /* Single line comment. */
+--[^\n]*  {}
+
+ /* Multiple lines comment. */
+\*\)  {
+  BEGIN(INITIAL);
+  cool_yylval.error_msg = "Unmatched *)";
+  return (ERROR);
+}
+
+\(\*  BEGIN(cmt);
+
+<cmt>[^*\n]
+
+<cmt>"*"+[^*)\n]*
+
+<cmt>\n  curr_lineno++;
+
+<cmt>"*"+")"  BEGIN(INITIAL);
+
+<cmt><<EOF>> {
+  BEGIN(INITIAL);
+  cool_yylval.error_msg = "EOF in comment";
+  return (ERROR);
+}
+
 
  /*
   *  The multiple-character operators.
   */
-{DARROW}		{ return (DARROW); }
+
+{DARROW}  { return (DARROW); }
+
+ /*
+  *  Integer.
+  */
+{DIGIT}+  { 
+  cool_yylval.symbol = inttable.add_string(yytext);
+  return (INT_CONST); 
+}
+
+ /*
+  *  TYPEID. 
+  */
+[A-Z]{CHAR}+|SELF_TYPE {
+  cool_yylval.symbol = idtable.add_string(yytext);
+  return (TYPEID);
+}
+
+ /*
+  *  OBJECTID. It's put at the end.
+  */
+
 
  /*
   * Keywords are case-insensitive except for the values true and false,
   * which must begin with a lower-case letter.
   */
 
+(?i:class)  return (CLASS); 
+(?i:if)   return (IF); 
+(?i:fi)   return (FI); 
+(?i:inherits)   return (INHERITS); 
+(?i:else)   return (ELSE); 
+(?i:in)   return (IN); 
+(?i:isvoid)   return (ISVOID); 
+(?i:let)   return (LET); 
+(?i:pool)   return (POOL); 
+(?i:loop)   return (LOOP); 
+(?i:then)   return (THEN); 
+(?i:while)   return (WHILE); 
+(?i:case)   return (CASE); 
+(?i:esac)   return (ESAC); 
+(?i:new)   return (NEW); 
+(?i:of)   return (OF); 
+(?i:not)   return (NOT); 
+
+t[Rr][Uu][Ee] { 
+    yylval.boolean = 1;
+    return (BOOL_CONST); 
+}
+
+f[Aa][Ll][Ss][Ee] {
+  yylval.boolean = 0; 
+  return (BOOL_CONST); 
+}
 
  /*
   *  String constants (C syntax)
@@ -76,5 +156,84 @@ DARROW          =>
   *
   */
 
+\"   string_buf_ptr = string_buf; BEGIN(str);
+
+<str>\" {
+  BEGIN(INITIAL);
+  *string_buf_ptr = '\0';
+  cool_yylval.symbol = stringtable.add_string(string_buf);
+  return (STR_CONST);
+}
+
+<str>\n {
+  BEGIN(INITIAL);
+  cool_yylval.error_msg = "Unterminated string constant";
+  return (ERROR);
+}
+
+<str>\0 {
+  BEGIN(INITIAL);
+  cool_yylval.error_msg = "String contains null character";
+  return (ERROR);
+}
+
+<str>\\n  *string_buf_ptr++ = '\n';
+<str>\\t  *string_buf_ptr++ = '\t';
+<str>\\r  *string_buf_ptr++ = '\r';
+<str>\\b  *string_buf_ptr++ = '\b';
+<str>\\f  *string_buf_ptr++ = '\f';
+
+ /* \x <=> x. Skip the '\' */
+<str>\\(.|\n)  {
+  if (string_buf_ptr - string_buf + 1 >= MAX_STR_CONST) {
+    BEGIN(INITIAL);
+    cool_yylval.error_msg = "String constant too long";
+    return (ERROR);
+  }
+  *string_buf_ptr++ = yytext[1];
+}
+ /* copy the content */
+<str>[^\\\n\"]+  {
+  char *yptr = yytext;
+  while (*yptr) {
+    if (string_buf_ptr - string_buf + 1 >= MAX_STR_CONST) {
+      BEGIN(INITIAL);
+      cool_yylval.error_msg = "String constant too long";
+      return (ERROR);
+    }
+    *string_buf_ptr++ = *yptr++;
+  }
+}
+
+\(  return 40;
+\)  return 41;
+\*  return 42;
+\+  return 43;
+\,  return 44;
+\-  return 45;
+\/  return 47;
+:   return 58; 
+;   return 59; 
+
+ /*
+  *  OBJECTID. 
+  */
+[a-z]{CHAR}* {
+  cool_yylval.symbol = idtable.add_string(yytext);
+  return (OBJECTID);
+}
+
+
+\<-  return (ASSIGN);
+\n  curr_lineno++;
+[ \t\f\r\v]+ {}
+
+ /* Invalid char */
+[\[\]\'>] {
+    cool_yylval.error_msg = yytext;
+    return (ERROR);
+}
+
+. { return yytext[0]; }
 
 %%
