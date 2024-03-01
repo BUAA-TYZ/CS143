@@ -43,36 +43,17 @@ func() : Bool {
 - Use `lexer assignments/PA1/stack.cl` to see the output.
   - `which lexer` should show something like 'bin/lexer'.  
 
-- The precedence is extracted from cool-manual.
-
-> 11.1 Precedence
-The precedence of infix binary and prefix unary operations, from highest to lowest, is given by the
-following table:
->
-> .
->
-> @
-> 
-> ~
->
-> isvoid
-> 
-> \* /
->
-> \+ -
->
-> <= < =
->
-> not
->
-> <-
->
-> All binary operations are left-associative, with the exception of assignment, which is right-associative,
-and the three comparison operations, which do not associate
 - In the rule section of flex
   - /* can't be unindented.
   - between '|', don't add extra space. `Int | Bool <- Wrong! Int|Bool <- Correct!`
   - Ref. Flex12 to see how to judge EOF. Don't use feof(fin) which is wrong.
+
+- Start condition is useful.
+	- When handling <str>, it is tricky that `<str>\0` can't detect the null character.
+		- Because `<str>[^\\\n\"]+` will absorb `\0`.
+		- So we must replace it with `<str>[^\\\n\"\0]+`.
+		- However, it will trigger a more tricky problem: how to handle the rest string.
+		- The idea is from others, by using `yymore()` and `yyleng`.
 
 Summary
 ---
