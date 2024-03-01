@@ -43,6 +43,8 @@ extern YYSTYPE cool_yylval;
  *  Add Your own definitions here
  */
 
+static int comment_depth;
+
 %}
 
 /*
@@ -50,11 +52,13 @@ extern YYSTYPE cool_yylval;
  */
 
 DARROW  =>
+LE  <=
+ASSIGN <-
 DIGIT  [0-9]
 CHAR   [a-zA-Z0-9_]
 
-%x  str
-%x  cmt
+%x  STR 
+%x  CMT
 
 %%
 
@@ -68,23 +72,30 @@ CHAR   [a-zA-Z0-9_]
  /* Multiple lines comment. */
 \*\)  {
   BEGIN(INITIAL);
-  cool_yylval.error_msg = "Unmatched *)";
+  yylval.error_msg = "Unmatched *)";
   return (ERROR);
 }
 
-\(\*  BEGIN(cmt);
+<INITIAL,CMT>\(\*  { 
+  BEGIN(CMT); 
+  ++comment_depth;
+}
 
-<cmt>[^*\n]
+<CMT>[^*\n]
 
-<cmt>"*"+[^*)\n]*
+<CMT>"*"+[^*)\n]*
 
-<cmt>\n  curr_lineno++;
+<CMT>\n  curr_lineno++;
 
-<cmt>"*"+")"  BEGIN(INITIAL);
+<CMT>"*"+")"  {
+  if (--comment_depth == 0) {
+    BEGIN(INITIAL);
+  }
+}
 
-<cmt><<EOF>> {
+<CMT><<EOF>> {
   BEGIN(INITIAL);
-  cool_yylval.error_msg = "EOF in comment";
+  yylval.error_msg = "EOF in comment";
   return (ERROR);
 }
 
@@ -94,26 +105,16 @@ CHAR   [a-zA-Z0-9_]
   */
 
 {DARROW}  { return (DARROW); }
+{LE}  { return (LE); }
+{ASSIGN}  { return (ASSIGN); }
 
  /*
   *  Integer.
   */
 {DIGIT}+  { 
-  cool_yylval.symbol = inttable.add_string(yytext);
+  yylval.symbol = inttable.add_string(yytext);
   return (INT_CONST); 
 }
-
- /*
-  *  TYPEID. 
-  */
-[A-Z]{CHAR}+|SELF_TYPE {
-  cool_yylval.symbol = idtable.add_string(yytext);
-  return (TYPEID);
-}
-
- /*
-  *  OBJECTID. It's put at the end.
-  */
 
 
  /*
@@ -139,15 +140,25 @@ CHAR   [a-zA-Z0-9_]
 (?i:of)   return (OF); 
 (?i:not)   return (NOT); 
 
-t[Rr][Uu][Ee] { 
+t(?i:rue) { 
     yylval.boolean = 1;
     return (BOOL_CONST); 
 }
 
-f[Aa][Ll][Ss][Ee] {
+f(?i:alse) {
   yylval.boolean = 0; 
   return (BOOL_CONST); 
 }
+
+
+ /*
+  *  TYPEID. 
+  */
+[A-Z]{CHAR}*|SELF_TYPE {
+  cool_yylval.symbol = idtable.add_string(yytext);
+  return (TYPEID);
+}
+
 
  /*
   *  String constants (C syntax)
@@ -156,74 +167,110 @@ f[Aa][Ll][Ss][Ee] {
   *
   */
 
-\"   string_buf_ptr = string_buf; BEGIN(str);
+\"  BEGIN(STR); yymore();
 
-<str>\" {
+<STR>[^\\\"\n]*  yymore();
+
+<STR>\\[^\n]  yymore();
+
+<STR>\\\n {
+  curr_lineno++;
+  yymore();
+}
+
+<STR><<EOF>> {
   BEGIN(INITIAL);
-  *string_buf_ptr = '\0';
-  cool_yylval.symbol = stringtable.add_string(string_buf);
+  yylval.error_msg = "EOF in string constant";
+  /* flushes the scanner’s internal buffer so that the next time the scanner attempts to match a token,
+   it will first refill the buffer using YY_INPUT(). Or use yyrestart(yyin); */
+  YY_FLUSH_BUFFER;
+  return (ERROR); 
+}
+
+<STR>\n {
+  BEGIN(INITIAL);
+  yylval.error_msg = "Unterminated string constant";
+  curr_lineno++;
+  return (ERROR); 
+}
+
+<STR>\" {
+  std::string input(yytext, yyleng);
+
+  // remove the '\"'s on both sides.
+  input = input.substr(1, input.length() - 2);
+
+  std::string output = "";
+  std::string::size_type pos;
+
+  if (input.find_first_of('\0') != std::string::npos) {
+    yylval.error_msg = "String contains null character";
+    BEGIN 0;
+    return ERROR;
+  }
+
+  while ((pos = input.find_first_of("\\")) != std::string::npos) {
+    output += input.substr(0, pos);
+
+    switch (input[pos + 1]) {
+      case 'b':
+        output += "\b";
+        break;
+      case 't':
+        output += "\t";
+        break;
+      case 'n':
+        output += "\n";
+        break;
+      case 'f':
+        output += "\f";
+        break;
+      default:
+        output += input[pos + 1];
+        break;
+    }
+
+    input = input.substr(pos + 2, input.length() - 2);
+  }
+
+  output += input;
+
+  if (output.length() > MAX_STR_CONST - 1) {
+    BEGIN (INITIAL);
+    yylval.error_msg = "String constant too long";
+    return ERROR;
+  }
+
+  yylval.symbol = stringtable.add_string((char*)output.c_str());
+  BEGIN (INITIAL);
   return (STR_CONST);
 }
 
-<str>\n {
-  BEGIN(INITIAL);
-  cool_yylval.error_msg = "Unterminated string constant";
-  return (ERROR);
-}
-
-<str>\0 {
-  BEGIN(INITIAL);
-  cool_yylval.error_msg = "String contains null character";
-  return (ERROR);
-}
-
-<str>\\n  *string_buf_ptr++ = '\n';
-<str>\\t  *string_buf_ptr++ = '\t';
-<str>\\r  *string_buf_ptr++ = '\r';
-<str>\\b  *string_buf_ptr++ = '\b';
-<str>\\f  *string_buf_ptr++ = '\f';
-
- /* \x <=> x. Skip the '\' */
-<str>\\(.|\n)  {
-  if (string_buf_ptr - string_buf + 1 >= MAX_STR_CONST) {
-    BEGIN(INITIAL);
-    cool_yylval.error_msg = "String constant too long";
-    return (ERROR);
-  }
-  *string_buf_ptr++ = yytext[1];
-}
- /* copy the content */
-<str>[^\\\n\"]+  {
-  char *yptr = yytext;
-  while (*yptr) {
-    if (string_buf_ptr - string_buf + 1 >= MAX_STR_CONST) {
-      BEGIN(INITIAL);
-      cool_yylval.error_msg = "String constant too long";
-      return (ERROR);
-    }
-    *string_buf_ptr++ = *yptr++;
-  }
-}
 
  /*
   *  OBJECTID. 
   */
 [a-z]{CHAR}* {
-  cool_yylval.symbol = idtable.add_string(yytext);
+  yylval.symbol = idtable.add_string(yytext);
   return (OBJECTID);
 }
 
 
-\<-  return (ASSIGN);
 \n  curr_lineno++;
+\0 {
+  BEGIN(INITIAL);
+  yylval.error_msg = "Code contains null character";
+  return (ERROR);
+}
 [ \t\f\r\v]+ {}
 
- /* Invalid char */
-[\[\]\'>] {
-    cool_yylval.error_msg = yytext;
-    return (ERROR);
-}
+ /* There are some unprintable characters, so must list all allowed characters. */
+[+/\-*=<\.~,;:()@{}] { return yytext[0]; }
 
-. { return yytext[0]; }
+ /* Invalid char.  */
+. {
+  cool_yylval.error_msg = yytext;
+  return (ERROR);
+}
 
 %%
