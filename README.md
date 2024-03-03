@@ -62,3 +62,43 @@ Summary
 - We know the comment is ignored in this step.
 - Some errors can already be detected by this step. For example, the unmatch of the comment signature, the invalid character, the string with an unescaped newline. 
 - Behind the flex, we shouldn't forget that the implementation of lexical analysis: **Rexp =>NFA=>DFA=>Code**. (The code contains the corresponding DFA actually.
+
+### PA3
+
+- For fun, play an example from the bison manual. Use it with flex.
+	1. Make sure that all characters are handled appropriately by flex.
+	2. Can define token or just return the origin character for convenience.(e.g `\^	{ return '^'; }`)
+	3. To extend the type of yylval, add `#define YYSTYPE double extern YYSTYPE yylval;` before `#include "calc.tab.h"`
+		- Using union is more	robust.
+		- [See here](https://zhuanlan.zhihu.com/p/143867739)
+	4. In `calc.y`, `extern int yylex()` so that it can work together.
+	5. Done.
+	6. Use `make` to compile them.
+		- `make` Revision
+		- It's not necessary to remember the meaning of some abbreviations like `$<`. Because it's easy to forget and hard to maintain.
+		- First, Set some variables. (e.g CC, CFLAGS, SRC)
+		- Secondly, figure out their dependencies.
+		- Lastly, write some phony targets like *clean*.
+- Some details about bison
+	- e.g. `expr: expr '+' expr';' ;`
+		- The location of the whole grouping is `@$`, while the locations of the subexpressions are `@1` and `@3`.
+		- The value of the whole grouping is `$$`, while the values of the subexpressions are `$1` and `$3`.
+	- Use left recursion for space.
+- Some details about writing PA3
+	- Ref. `cool-tour.pdf` / `coor-manual.pdf figure1`(very useful)
+		- `cool-manual.pdf Section 11.1 Precedence`
+	- Constructors -> Ref. `cool-tree.aps`, `cool-tree.h`
+	- Do we need to use `stringtable.add_string()...`?
+		- No, we have already use it in `cool.flex`.
+		- Except for `ID()`, it means `self.ID()` actually. So `add_string('self')` to return a symbol.
+	- A simple and useful strategy is simply to skip the rest of the current input line or current statement if an error is detected.
+	- By default, it sets the beginning of @\$ to the beginning of the first symbol, and the end of @\$ to the end of the last symbol.
+		- When practicing, @\# can be used as an integer.
+		- When meetting the empty rule, i don't know how to set the line number of it. It returns something like #-1073741822.
+		- So i reduce the use of empty rule, which causes more shift-reduce conflicts.
+
+Summary
+---
+- Parser has two targets:
+	1. Accept or reject if there are some errors being detected.
+	2. Generate an AST.
