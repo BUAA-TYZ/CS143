@@ -109,7 +109,7 @@ CHAR   [a-zA-Z0-9_]
 {ASSIGN}  { return (ASSIGN); }
 
  /*
-  *  Integer.
+  *  Integer. It allows a number to start with 0, like C.
   */
 {DIGIT}+  { 
   yylval.symbol = inttable.add_string(yytext);
