@@ -137,7 +137,7 @@
     %type <feature> feature
     %type <formals> formal_list formal_not_empty_list
     %type <formal> formal
-    %type <expressions> expr_not_empty_list invoke_expr_list
+    %type <expressions> statement_list invoke_expr_list
     %type <expression> expr let_expr
     %type <cases> case_list
     %type <case_> case
@@ -222,23 +222,17 @@
 
     expr:  OBJECTID ASSIGN expr
     {  $$ = assign($1, $3);  }
-    |  OBJECTID '('')'
-    {  $$ = dispatch(object(idtable.add_string("self")), $1, nil_Expressions());  }
     |  OBJECTID '(' invoke_expr_list ')'
     {  $$ = dispatch(object(idtable.add_string("self")), $1, $3);  }
-    |  expr '.' OBJECTID '(' ')'
-    {  $$ = dispatch($1, $3, nil_Expressions());  }
     |  expr '.' OBJECTID '(' invoke_expr_list ')'
     {  $$ = dispatch($1, $3, $5);  }
-    |  expr '@' TYPEID '.' OBJECTID '(' ')'
-    {  $$ = static_dispatch($1, $3, $5, nil_Expressions());  }
     |  expr '@' TYPEID '.' OBJECTID '(' invoke_expr_list ')'
     {  $$ = static_dispatch($1, $3, $5, $7);  }
     |  IF expr THEN expr ELSE expr FI
     {  $$ = cond($2, $4, $6);  }
     |  WHILE expr LOOP expr POOL
     {  $$ = loop($2, $4);  }
-    |  '{' expr_not_empty_list '}'
+    |  '{' statement_list '}'
     {  $$ = block($2);  }
     |  LET let_expr
     {  $$ = $2;  }
@@ -267,7 +261,7 @@
     |  '(' expr ')'
     {  $$ = $2;  }
     |  OBJECTID
-    {   $$ = object($1);  }
+    {  $$ = object($1);  }
     |  expr LE expr
     {  $$ = leq($1, $3);  }
     |  INT_CONST
@@ -278,15 +272,17 @@
     {  $$ = bool_const($1); }
     ;
 
-    expr_not_empty_list:  expr ';'
+    statement_list:  expr ';'
     {  $$ = single_Expressions($1);  }
-    |  expr_not_empty_list expr ';'
+    |  statement_list expr ';'
     {  $$ = append_Expressions($1, single_Expressions($2));  }
-    |  expr_not_empty_list error ';'
+    |  statement_list error ';'
     {}
     ;
 
-    invoke_expr_list:  expr 
+    invoke_expr_list:  /* empty */
+    {  $$ = nil_Expressions();  }
+    |  expr 
     {  $$ = single_Expressions($1);  }
     |  invoke_expr_list ',' expr
     {  $$ = append_Expressions($1, single_Expressions($3));  }
