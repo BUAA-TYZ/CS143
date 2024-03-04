@@ -5,11 +5,17 @@
 #define COOL_TREE_HANDCODE_H
 
 #include <iostream>
+#include <string>
+#include <unordered_map>
 #include "tree.h"
 #include "cool.h"
+#include "semant.h"
 #include "stringtab.h"
 #define yylineno curr_lineno;
 extern int yylineno;
+
+template<typename K, typename V>
+using HashMap = std::unordered_map<K, V>;
 
 inline Boolean copy_Boolean(Boolean b) {return b; }
 inline void assert_Boolean(Boolean) {}
@@ -44,6 +50,13 @@ typedef Expressions_class *Expressions;
 typedef list_node<Case> Cases_class;
 typedef Cases_class *Cases;
 
+#define REGISTER_ERROR			\
+private:			\	
+	ClassTableP class_table;			\
+public:			\
+	void register_table(ClassTableP c)	{ class_table = c; }			\
+  void notify_error(std::string error_msg)  { class_table->receive_error(error_msg); }
+
 #define Program_EXTRAS                          \
 virtual void semant() = 0;			\
 virtual void dump_with_types(ostream&, int) = 0; 
@@ -56,11 +69,17 @@ void dump_with_types(ostream&, int);
 
 #define Class__EXTRAS                   \
 virtual Symbol get_filename() = 0;      \
-virtual void dump_with_types(ostream&,int) = 0; 
+virtual Symbol get_name() = 0;      \
+virtual Symbol get_parent() = 0;      \
+virtual void dump_with_types(ostream&,int) = 0;			\
+
+
 
 
 #define class__EXTRAS                                 \
 Symbol get_filename() { return filename; }             \
+Symbol get_name() { return name; }             \
+Symbol get_parent() { return parent; }             \
 void dump_with_types(ostream&,int);                    
 
 

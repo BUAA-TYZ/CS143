@@ -32,9 +32,23 @@ public:
 typedef class Class__class *Class_;
 
 class Class__class : public tree_node {
+private:
+   // methods <Method m, arg Type 0, arg Type 1...>
+   // attrs <Method m, Type t>
+   HashMap<Symbol, List<Symbol>> methods{};
+   HashMap<Symbol, Symbol> attrs{};
 public:
    tree_node *copy()		 { return copy_Class_(); }
    virtual Class_ copy_Class_() = 0;
+
+   virtual void collect_info() = 0;
+   void add_method(Symbol name, List<Symbol> types);
+   void add_attr(Symbol name, Symbol type);
+
+
+#ifdef REGISTER_ERROR
+   REGISTER_ERROR
+#endif
 
 #ifdef Class__EXTRAS
    Class__EXTRAS
@@ -49,6 +63,10 @@ class Feature_class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Feature(); }
    virtual Feature copy_Feature() = 0;
+
+#ifdef REGISTER_ERROR
+   REGISTER_ERROR
+#endif
 
 #ifdef Feature_EXTRAS
    Feature_EXTRAS
@@ -161,6 +179,7 @@ public:
    }
    Class_ copy_Class_();
    void dump(ostream& stream, int n);
+   void collect_info() override;
 
 #ifdef Class__SHARED_EXTRAS
    Class__SHARED_EXTRAS

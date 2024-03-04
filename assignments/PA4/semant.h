@@ -23,11 +23,20 @@ class ClassTable {
 private:
   int semant_errors;
   void install_basic_classes();
+
+  bool check_all_defined(Classes);
+  bool check_cycle(Classes);
+  bool check_main();
+
   ostream& error_stream;
+  HashMap<Symbol, Symbol> dependency{};
+  HashMap<Symbol, int> class_line{};
+  void add_class(Class_ c);
 
 public:
   ClassTable(Classes);
   int errors() { return semant_errors; }
+  void receive_error(std::string error_msg)  { error_stream << error_msg; }
   ostream& semant_error();
   ostream& semant_error(Class_ c);
   ostream& semant_error(Symbol filename, tree_node *t);

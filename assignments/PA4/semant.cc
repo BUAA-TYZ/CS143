@@ -85,8 +85,116 @@ static void initialize_constants(void)
 
 ClassTable::ClassTable(Classes classes) : semant_errors(0) , error_stream(cerr) {
 
-    /* Fill this in */
+    install_basic_classes();
 
+    for(int i = classes->first(); classes->more(i); i = classes->next(i)) {
+        Symbol filename = classes->nth(i)->get_filename();
+        Symbol name = classes->nth(i)->get_name();
+        Symbol parent = classes->nth(i)->get_parent();
+        int line_number = classes->nth(i)->get_line_number();
+
+        if (name == Object || name == Int || name == Bool || name == Str || name == IO) {
+            // Redefinition of basic class.
+            semant_errors = 1;
+            error_stream << filename << ':' << line_number << ": " << "Redefinition of basic class " << name << ".\n";
+            return;
+        }
+
+        if (dependency.find(name) != dependency.end()) {
+            // Multiple definitions error
+            semant_errors = 2;
+            error_stream << filename << ':' << line_number << ": " << "Class " << name << " was previously defined.\n";
+            return;
+        }
+        
+        class_line[name] = line_number;
+        dependency[name] = parent;
+    }
+
+    if (!check_all_defined(classes) || !check_cycle(classes) || !check_main()) {
+        return;
+    }
+}
+
+// This function can be merged into `check_cycle`. But for clarity, still seperate them. 
+bool ClassTable::check_all_defined(Classes classes) {
+    bool flag = true;
+    for (int i = classes->first(); classes->more(i); i = classes->next(i)) {
+        Symbol filename = classes->nth(i)->get_filename();
+        Symbol name = classes->nth(i)->get_name();
+        Symbol parent = classes->nth(i)->get_parent();
+
+        if (dependency.find(dependency[name]) == dependency.end()) {
+            semant_errors = 4;
+            error_stream << filename << ':' << class_line[name] << ": " << "Class " << name << 
+            " inherits from an undefined class " << dependency[name] << ".\n";
+            flag = false;
+        }
+    }
+    return flag;
+}
+
+// This function will find the cycle and report it accurately.
+// No need to check the basic class, because they will only be inherited.
+bool ClassTable::check_cycle(Classes classes) {
+    int flag = true;
+    // 0 <- no detected | 1 <- detected | 2 <- reported
+    // Introducing state 2 is to avoid reporting a same entrance repeatedly.
+    // e.g.: A:1: Find an inheritance cycle: Class A < Class C < Class B < Class A
+    //       C:7: Find an inheritance cycle: Class C < Class B < Class A < Class C
+    HashMap<Symbol, int> detected{};
+    for(int i = classes->first(); classes->more(i); i = classes->next(i)) { 
+        Symbol filename = classes->nth(i)->get_filename();
+        Symbol name = classes->nth(i)->get_name();
+        Symbol parent = classes->nth(i)->get_parent();
+        int line_number = classes->nth(i)->get_line_number();
+
+        if (detected[name] == 0) { 
+            detected[name] = 1;
+            // Ordinary methods
+            Symbol quick = name, slow = name;
+            while (quick && dependency[quick]) {
+                if (detected[dependency[quick]] == 0) {
+                    detected[dependency[quick]] = 1;
+                }
+                quick = dependency[dependency[quick]];
+                if (detected[quick] == 0) {
+                    detected[quick] = 1;
+                }
+                slow = dependency[slow];
+
+                if (quick == slow) {
+                    quick = name;
+                    while (quick != slow) {
+                        quick = dependency[quick];
+                        slow = dependency[slow];
+                    }
+                    if (detected[quick] != 2) {
+                        semant_errors = 3;
+                        error_stream << quick << ':' << class_line[quick] << ": " << "Find an inheritance cycle: ";
+                        do {
+                            detected[quick] = 2;
+                            error_stream << "Class "<< quick << " < ";
+                            quick = dependency[quick];
+                        } while (quick != slow);
+                        error_stream << "Class " << quick << "\n";
+                    }
+                    flag = false;
+                    break;
+                }
+            }
+        }
+    }
+    return flag;
+}
+
+bool ClassTable::check_main() {
+    if (dependency.find(Main) == dependency.end()) {
+        semant_errors = 5;
+        error_stream << "Class Main is not defined.\n";
+        return false;
+    }
+    return true;
 }
 
 void ClassTable::install_basic_classes() {
@@ -188,6 +296,17 @@ void ClassTable::install_basic_classes() {
 						      Str, 
 						      no_expr()))),
 	       filename);
+
+    dependency[Object] = nullptr;
+    dependency[IO] = Object;
+    dependency[Int] = Object;
+    dependency[Bool] = Object;
+    dependency[Str] = Object;
+}
+
+void ClassTable::add_class(Class_ c) {
+    c->register_table(this);
+    c->collect_info();
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -253,3 +372,42 @@ void program_class::semant()
 }
 
 
+////////////////////////////////////////////////////////////////////
+//
+//      Class__class and class__class
+//
+////////////////////////////////////////////////////////////////////
+
+void class__class::collect_info() {
+    // We have to dynamic_cast to collect the info of methods and attrs.
+    // We also check the error of them.
+    for(int i = features->first(); features->more(i); i = features->next(i)) { 
+        if (method_class* method = dynamic_cast<method_class*>(features->nth(i)); method != nullptr) {
+            
+        } else {
+            if (attr_class* attr = dynamic_cast<attr_class*>(features->nth(i)); attr != nullptr) {
+
+            }
+        }
+    }
+}
+
+void Class__class::add_method(Symbol name, List<Symbol> types) {
+    if (methods.find(name) != methods.end()) {
+        std::string error_msg = std::string(get_filename()->get_string())
+         + ":" + std::to_string(get_line_number()) + " Method " + name->get_string() + " is multiply defined.\n";
+        notify_error(error_msg);
+        return;
+    } 
+    methods[name] = types;
+}
+
+void Class__class::add_attr(Symbol name, Symbol type) {
+    if (attrs.find(name) != attrs.end()) {
+        std::string error_msg = std::string(get_filename()->get_string())
+         + ":" + std::to_string(get_line_number()) + " Attribute " + name->get_string() + " is multiply defined.\n";
+        notify_error(error_msg);
+        return;
+    }
+    attrs[name] = type;
+}
