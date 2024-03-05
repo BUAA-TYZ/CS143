@@ -95,38 +95,99 @@ ClassTable::ClassTable(Classes classes) : semant_errors(0) , error_stream(cerr) 
 
         if (name == Object || name == Int || name == Bool || name == Str || name == IO) {
             // Redefinition of basic class.
-            semant_errors = 1;
+            ++semant_errors;
             error_stream << filename << ':' << line_number << ": " << "Redefinition of basic class " << name << ".\n";
             return;
         }
-
-        if (dependency.find(name) != dependency.end()) {
-            // Multiple definitions error
-            semant_errors = 2;
-            error_stream << filename << ':' << line_number << ": " << "Class " << name << " was previously defined.\n";
-            return;
-        }
         
-        class_line[name] = line_number;
-        dependency[name] = parent;
+        add_class(classes->nth(i));
     }
 
-    if (!check_all_defined(classes) || !check_cycle(classes) || !check_main()) {
+    // if (!check_all_defined(classes) || !check_cycle(classes) || !check_main() || !check_consistent_method(classes)) {
+    //     return;
+    // }
+
+    check_all_defined(classes);
+    if (!check_cycle(classes)) {
         return;
     }
+    check_main();
+    check_consistent_method();
+    check_consistent_attr();
+
+    // Start to type inference.
+    for(int i = classes->first(); classes->more(i); i = classes->next(i)) {
+        Symbol name = classes->nth(i)->get_name();
+        MethodEnv method_env = make_method_env(name);
+        O_Env o_env = make_o_env(name);
+        classes->nth(i)->type_infer(o_env, method_env);
+    }
+}
+
+bool ClassTable::check_consistent_method() {
+    bool flag = true;
+    for (const auto& [c, methods]: class_methods) {
+        for (const auto& [m_name, types]: methods) {
+            Symbol name = c;
+            // If has no parent class, then must be correct.
+            while (has_parent(name)) {
+                Symbol parent = dependency[name];
+                const auto& parent_methods = class_methods.at(parent);
+                if (parent_methods.find(m_name) != parent_methods.end()) {
+                    const auto& parent_method_types = parent_methods.at(m_name);
+                    bool check = (types.size() == parent_method_types.size());
+                    if (check) {
+                        for (size_t i = 0; i < types.size(); i++) {
+                            if (types[i] != parent_method_types[i]) {
+                                check = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (!check) {
+                        ++semant_errors;
+                        error_stream << get_class_file(name) << ':' << get_class_method_line(name, m_name) << ": " 
+                        << "Redefined method " << m_name <<" has different argument types.\n";
+                        flag = false;
+                    }
+                }
+                name = parent;
+            }
+        }
+    }
+    return flag;
+}
+
+bool ClassTable::check_consistent_attr() {
+    bool flag = true;
+    for (const auto& [c, attrs]: class_attrs) {
+        for (const auto& [a_name, type]: attrs) {
+            Symbol name = c;
+            while (has_parent(name)) {
+                Symbol parent = dependency[name];
+                const auto& parent_attrs = class_attrs.at(parent);
+                if (parent_attrs.find(a_name) != parent_attrs.end()) {
+                    ++semant_errors;
+                    error_stream << get_class_file(name) << ':' << get_class_attr_line(name, a_name) << ": " 
+                    << "Attribute " << a_name <<" is an attribute of an inherited class.\n";
+                    flag = false; 
+                }
+                name = parent;
+            }
+        }
+    }
+    return flag;
 }
 
 // This function can be merged into `check_cycle`. But for clarity, still seperate them. 
 bool ClassTable::check_all_defined(Classes classes) {
     bool flag = true;
     for (int i = classes->first(); classes->more(i); i = classes->next(i)) {
-        Symbol filename = classes->nth(i)->get_filename();
         Symbol name = classes->nth(i)->get_name();
-        Symbol parent = classes->nth(i)->get_parent();
 
         if (dependency.find(dependency[name]) == dependency.end()) {
-            semant_errors = 4;
-            error_stream << filename << ':' << class_line[name] << ": " << "Class " << name << 
+            ++semant_errors;
+            error_stream << get_class_file(name) << ':' << get_class_line(name) << ": " << "Class " << name << 
             " inherits from an undefined class " << dependency[name] << ".\n";
             flag = false;
         }
@@ -144,10 +205,7 @@ bool ClassTable::check_cycle(Classes classes) {
     //       C:7: Find an inheritance cycle: Class C < Class B < Class A < Class C
     HashMap<Symbol, int> detected{};
     for(int i = classes->first(); classes->more(i); i = classes->next(i)) { 
-        Symbol filename = classes->nth(i)->get_filename();
         Symbol name = classes->nth(i)->get_name();
-        Symbol parent = classes->nth(i)->get_parent();
-        int line_number = classes->nth(i)->get_line_number();
 
         if (detected[name] == 0) { 
             detected[name] = 1;
@@ -170,8 +228,8 @@ bool ClassTable::check_cycle(Classes classes) {
                         slow = dependency[slow];
                     }
                     if (detected[quick] != 2) {
-                        semant_errors = 3;
-                        error_stream << quick << ':' << class_line[quick] << ": " << "Find an inheritance cycle: ";
+                        ++semant_errors;
+                        error_stream << get_class_file(quick) << ':' << get_class_line(quick) << ": " << "Find an inheritance cycle: ";
                         do {
                             detected[quick] = 2;
                             error_stream << "Class "<< quick << " < ";
@@ -190,7 +248,7 @@ bool ClassTable::check_cycle(Classes classes) {
 
 bool ClassTable::check_main() {
     if (dependency.find(Main) == dependency.end()) {
-        semant_errors = 5;
+        ++semant_errors;
         error_stream << "Class Main is not defined.\n";
         return false;
     }
@@ -297,16 +355,64 @@ void ClassTable::install_basic_classes() {
 						      no_expr()))),
 	       filename);
 
-    dependency[Object] = nullptr;
-    dependency[IO] = Object;
-    dependency[Int] = Object;
-    dependency[Bool] = Object;
-    dependency[Str] = Object;
+    add_class(Object_class);
+    add_class(IO_class);
+    add_class(Bool_class);
+    add_class(Str_class);
+    add_class(Int_class);
 }
 
 void ClassTable::add_class(Class_ c) {
-    c->register_table(this);
+    Symbol name = c->get_name();
+    Symbol parent = c->get_parent();
+    Symbol filename = c->get_filename();
+    int line_number = c->get_line_number();
+    
     c->collect_info();
+    if (c->get_error_msg() != "") {
+        ++semant_errors;
+        error_stream << c->get_error_msg();
+    }
+
+    if (dependency.find(name) != dependency.end()) {
+            // Multiple definitions error
+            ++semant_errors = 2;
+            error_stream << filename << ':' << line_number << ": " << "Class " << name << " was previously defined.\n";
+            return;
+    }
+
+    dependency[name] = parent;
+    class_methods.emplace(name, c->get_methods());
+    class_attrs.emplace(name, c->get_attrs());
+    classes.emplace(name, c);
+}
+
+MethodEnv ClassTable::make_method_env(Symbol name) {
+    // Don't care about delete.
+    auto* method_env = new std::vector<std::pair<Symbol, const HashMap<Symbol, const std::vector<Symbol>&>& >>();
+    while (has_parent(name)) {
+        method_env->emplace_back(name, class_methods.at(name));
+        name = dependency[name];
+    }
+    return *method_env;
+}
+
+O_Env ClassTable::make_o_env(Symbol name) {
+    auto* o_env = new SymbolTable<Symbol, Symbol>();
+    o_env->enterscope();
+    while (has_parent(name)) {
+        auto& attrs = class_attrs.at(name);
+        for (auto&[a_name, type]: attrs) {
+            // The interface does not accept const. F**K
+            o_env->addid(a_name, &const_cast<Symbol&>(type));
+        }
+        name = dependency[name];
+    } 
+    return *o_env;
+}
+
+bool ClassTable::has_parent(Symbol name) {
+    return name != Object;
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -382,32 +488,94 @@ void class__class::collect_info() {
     // We have to dynamic_cast to collect the info of methods and attrs.
     // We also check the error of them.
     for(int i = features->first(); features->more(i); i = features->next(i)) { 
-        if (method_class* method = dynamic_cast<method_class*>(features->nth(i)); method != nullptr) {
-            
+        method_class* method = dynamic_cast<method_class*>(features->nth(i));
+        if (method != nullptr) {
+            method->register_class(this);
+            method->check_error();
+            add_method(method);
+            method_line.emplace(method->get_name(), method->get_line_number());
         } else {
-            if (attr_class* attr = dynamic_cast<attr_class*>(features->nth(i)); attr != nullptr) {
-
+            attr_class* attr = dynamic_cast<attr_class*>(features->nth(i));
+            if (attr != nullptr) {
+                attr->register_class(this);
+                add_attr(attr);
+                attr_line.emplace(attr->get_name(), attr->get_line_number());
             }
         }
     }
 }
 
-void Class__class::add_method(Symbol name, List<Symbol> types) {
-    if (methods.find(name) != methods.end()) {
-        std::string error_msg = std::string(get_filename()->get_string())
-         + ":" + std::to_string(get_line_number()) + " Method " + name->get_string() + " is multiply defined.\n";
-        notify_error(error_msg);
-        return;
-    } 
-    methods[name] = types;
+void class__class::type_infer(O_Env o_env, MethodEnv m_env) {
+    for(int i = features->first(); features->more(i); i = features->next(i)) {
+        features->nth(i)->type_infer(o_env, m_env);
+    }
 }
 
-void Class__class::add_attr(Symbol name, Symbol type) {
+void Class__class::add_method(method_class* method) {
+    Symbol name = method->get_name();
+    const auto& types = method->collect_type();
+    if (methods.find(name) != methods.end()) {
+        error_msg += std::string(get_filename()->get_string()) + ':' + method->gen_multiple_def_error();
+        return;
+    } 
+    methods.emplace(name, types);
+}
+
+void Class__class::add_attr(attr_class* attr) {
+    Symbol name = attr->get_name();
+    Symbol type = attr->collect_type();
     if (attrs.find(name) != attrs.end()) {
-        std::string error_msg = std::string(get_filename()->get_string())
-         + ":" + std::to_string(get_line_number()) + " Attribute " + name->get_string() + " is multiply defined.\n";
-        notify_error(error_msg);
+        error_msg += std::string(get_filename()->get_string()) + ':' + attr->gen_multiple_def_error();
         return;
     }
     attrs[name] = type;
 }
+
+void Class__class::receive_error(std::string error) {
+    error_msg += std::string(get_filename()->get_string()) + ':' + error;
+}
+
+////////////////////////////////////////////////////////////////////
+//
+//      Feature_class, method_class and attr_class
+//
+////////////////////////////////////////////////////////////////////
+
+const std::vector<Symbol>& method_class::collect_type() {
+    for(int i = formals->first(); formals->more(i); i = formals->next(i)) {
+        types.emplace_back(formals->nth(i)->get_type_decl());   
+    }
+    types.emplace_back(return_type);
+    return types;
+}
+
+void method_class::check_error() {
+    check_unique();
+}
+
+void method_class::check_unique() {
+    std::unordered_set<Symbol> names;
+    for(int i = formals->first(); formals->more(i); i = formals->next(i)) {
+        Symbol name = formals->nth(i)->get_name();
+        int line_number = formals->nth(i)->get_line_number();
+
+        if (names.find(name) != names.end()) {
+            notify_error(std::to_string(line_number) + " Formal parameter " + 
+            name->get_string() + " is multiply defined.\n");
+        } else {
+            names.emplace(name);
+        }
+    }
+}
+
+void method_class::type_infer(O_Env o_env, MethodEnv m_env) {
+    o_env.enterscope();
+    for (int i = formals->first(); formals->more(i); i = formals->next(i)) {
+        Symbol name = formals->nth(i)->get_name();
+        o_env.addid(name, &types[i]);
+    }
+    Symbol expr_type = expr->type_infer(o_env, m_env);
+    o_env.exitscope();
+}
+
+void attr_class::type_infer(O_Env o_env, MethodEnv m_env) {}

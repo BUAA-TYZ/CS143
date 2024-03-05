@@ -9,9 +9,18 @@
 //////////////////////////////////////////////////////////
 
 
+#include "symtab.h"
 #include "tree.h"
 #include "cool-tree.handcode.h"
 
+template<typename K, typename V>
+using HashMap = std::unordered_map<K, V>;
+
+// An inheritance list of <Class C, Methods of C>.
+using MethodEnv = const std::vector<std::pair<Symbol, const HashMap<Symbol, const std::vector<Symbol>&>& >> &;
+// An inheritance list of <Class C, Attributes of C>.
+using AttrEnv = const std::vector<std::pair<Symbol, const HashMap<Symbol, Symbol>& >> &;
+using O_Env = SymbolTable<Symbol, Symbol>&;
 
 // define the class for phylum
 // define simple phylum - Program
@@ -31,24 +40,31 @@ public:
 // define simple phylum - Class_
 typedef class Class__class *Class_;
 
+class method_class;
+class attr_class;
+
 class Class__class : public tree_node {
-private:
+protected:
    // methods <Method m, arg Type 0, arg Type 1...>
    // attrs <Method m, Type t>
-   HashMap<Symbol, List<Symbol>> methods{};
+   HashMap<Symbol, const std::vector<Symbol>&> methods{};
    HashMap<Symbol, Symbol> attrs{};
+   // For report error
+   HashMap<Symbol, int> method_line{};
+   HashMap<Symbol, int> attr_line{};
 public:
    tree_node *copy()		 { return copy_Class_(); }
    virtual Class_ copy_Class_() = 0;
 
+   const HashMap<Symbol, const std::vector<Symbol>&>& get_methods() { return methods; }
+   const HashMap<Symbol, Symbol>& get_attrs() { return attrs; }
+   int get_method_line(Symbol m_name) { return method_line[m_name]; }
+   int get_attr_line(Symbol a_name) { return attr_line[a_name]; }
+
    virtual void collect_info() = 0;
-   void add_method(Symbol name, List<Symbol> types);
-   void add_attr(Symbol name, Symbol type);
+   void add_method(method_class*);
+   void add_attr(attr_class*);
 
-
-#ifdef REGISTER_ERROR
-   REGISTER_ERROR
-#endif
 
 #ifdef Class__EXTRAS
    Class__EXTRAS
@@ -197,6 +213,7 @@ protected:
    Formals formals;
    Symbol return_type;
    Expression expr;
+   std::vector<Symbol> types;
 public:
    method_class(Symbol a1, Formals a2, Symbol a3, Expression a4) {
       name = a1;
@@ -206,6 +223,14 @@ public:
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
+
+   const std::vector<Symbol>& collect_type();
+   std::string gen_multiple_def_error() {
+      return std::to_string(get_line_number()) + " Method " + name->get_string() + " is multiply defined.\n";
+   }
+   void check_error();
+   // Formals have different names.
+   void check_unique();
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -230,6 +255,11 @@ public:
    }
    Feature copy_Feature();
    void dump(ostream& stream, int n);
+
+   Symbol collect_type() { return type_decl; }
+   std::string gen_multiple_def_error() {
+      return std::to_string(get_line_number()) + " Attribute " + name->get_string() + " is multiply defined.\n";
+   }
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS

@@ -7,15 +7,14 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 #include "tree.h"
 #include "cool.h"
-#include "semant.h"
 #include "stringtab.h"
 #define yylineno curr_lineno;
 extern int yylineno;
 
-template<typename K, typename V>
-using HashMap = std::unordered_map<K, V>;
 
 inline Boolean copy_Boolean(Boolean b) {return b; }
 inline void assert_Boolean(Boolean) {}
@@ -51,11 +50,13 @@ typedef list_node<Case> Cases_class;
 typedef Cases_class *Cases;
 
 #define REGISTER_ERROR			\
-private:			\	
-	ClassTableP class_table;			\
+private:			\
+	Class_ class_;			\
 public:			\
-	void register_table(ClassTableP c)	{ class_table = c; }			\
-  void notify_error(std::string error_msg)  { class_table->receive_error(error_msg); }
+	void register_class(Class_ c)	{ class_ = c; }			\
+  void notify_error(std::string error_msg)  { class_->receive_error(error_msg); }
+
+
 
 #define Program_EXTRAS                          \
 virtual void semant() = 0;			\
@@ -72,6 +73,11 @@ virtual Symbol get_filename() = 0;      \
 virtual Symbol get_name() = 0;      \
 virtual Symbol get_parent() = 0;      \
 virtual void dump_with_types(ostream&,int) = 0;			\
+void receive_error(std::string);			\
+const std::string& get_error_msg() { return error_msg; }			\
+virtual void type_infer(O_Env, MethodEnv) = 0;			\
+private:	\
+std::string error_msg{};
 
 
 
@@ -80,25 +86,34 @@ virtual void dump_with_types(ostream&,int) = 0;			\
 Symbol get_filename() { return filename; }             \
 Symbol get_name() { return name; }             \
 Symbol get_parent() { return parent; }             \
+void type_infer(O_Env, MethodEnv) override;			\
 void dump_with_types(ostream&,int);                    
 
 
 #define Feature_EXTRAS                                        \
-virtual void dump_with_types(ostream&,int) = 0; 
+virtual void dump_with_types(ostream&,int) = 0;			\
+virtual Symbol get_name() = 0;      \
+virtual void type_infer(O_Env, MethodEnv) = 0;			\
 
 
 #define Feature_SHARED_EXTRAS                                       \
-void dump_with_types(ostream&,int);    
+void dump_with_types(ostream&,int);    	\
+Symbol get_name() { return name; }             \
+void type_infer(O_Env, MethodEnv) override;			\
 
 
 
 
 
 #define Formal_EXTRAS                              \
+virtual Symbol get_type_decl() = 0;      \
+virtual Symbol get_name() = 0;      \
 virtual void dump_with_types(ostream&,int) = 0;
 
 
 #define formal_EXTRAS                           \
+Symbol get_type_decl() override { return type_decl; }      \
+Symbol get_name() override { return name; }      \
 void dump_with_types(ostream&,int);
 
 
@@ -116,9 +131,11 @@ Symbol get_type() { return type; }           \
 Expression set_type(Symbol s) { type = s; return this; } \
 virtual void dump_with_types(ostream&,int) = 0;  \
 void dump_type(ostream&, int);               \
+virtual Symbol type_infer(O_Env, MethodEnv) = 0;			\
 Expression_class() { type = (Symbol) NULL; }
 
 #define Expression_SHARED_EXTRAS           \
+Symbol type_infer(O_Env, MethodEnv) override;			\
 void dump_with_types(ostream&,int); 
 
 #endif

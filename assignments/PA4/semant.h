@@ -11,8 +11,6 @@
 #define TRUE 1
 #define FALSE 0
 
-class ClassTable;
-typedef ClassTable *ClassTableP;
 
 // This is a structure that may be used to contain the semantic
 // information such as the inheritance graph.  You may use it or not as
@@ -27,11 +25,22 @@ private:
   bool check_all_defined(Classes);
   bool check_cycle(Classes);
   bool check_main();
+  bool check_consistent_method();
+  bool check_consistent_attr();
 
   ostream& error_stream;
+
+  // Prepare the env. Though these infos can be asked by using classes, store them for speed.
+  // Because they are all pointers or references, it will not waste too much space.
   HashMap<Symbol, Symbol> dependency{};
-  HashMap<Symbol, int> class_line{};
+  HashMap<Symbol, const HashMap<Symbol, const std::vector<Symbol>&>&> class_methods{};
+  HashMap<Symbol, const HashMap<Symbol, Symbol>&> class_attrs{};
+
+  HashMap<Symbol, Class_> classes;
   void add_class(Class_ c);
+
+  MethodEnv make_method_env(Symbol name);
+  O_Env make_o_env(Symbol name);
 
 public:
   ClassTable(Classes);
@@ -40,6 +49,25 @@ public:
   ostream& semant_error();
   ostream& semant_error(Class_ c);
   ostream& semant_error(Symbol filename, tree_node *t);
+
+  bool has_parent(Symbol name);
+
+  // To report the info more accurately.(e.g. what is #line of the class at the entrance in check_cycle)
+  int get_class_line(Symbol name) {
+    return classes.at(name)->get_line_number();
+  }
+
+  int get_class_method_line(Symbol name, Symbol m_name) {
+    return classes.at(name)->get_method_line(m_name);
+  }
+
+  int get_class_attr_line(Symbol name, Symbol a_name) {
+    return classes.at(name)->get_attr_line(a_name);
+  }
+
+  std::string get_class_file(Symbol name) {
+    return std::string(classes.at(name)->get_filename()->get_string());
+  }
 };
 
 
