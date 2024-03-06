@@ -16,10 +16,8 @@
 template<typename K, typename V>
 using HashMap = std::unordered_map<K, V>;
 
-// An inheritance list of <Class C, Methods of C>.
-using MethodEnv = const std::vector<std::pair<Symbol, const HashMap<Symbol, const std::vector<Symbol>&>& >> &;
-// An inheritance list of <Class C, Attributes of C>.
-using AttrEnv = const std::vector<std::pair<Symbol, const HashMap<Symbol, Symbol>& >> &;
+using MethodEnv = const HashMap<Symbol, const HashMap<Symbol, const std::vector<Symbol>&>&> &;
+using DepEnv = const HashMap<Symbol, Symbol> &;
 using O_Env = SymbolTable<Symbol, Symbol>&;
 
 // define the class for phylum
@@ -112,6 +110,10 @@ public:
    tree_node *copy()		 { return copy_Expression(); }
    virtual Expression copy_Expression() = 0;
 
+#ifdef REGISTER_ERROR
+   REGISTER_ERROR
+#endif
+
 #ifdef Expression_EXTRAS
    Expression_EXTRAS
 #endif
@@ -125,6 +127,10 @@ class Case_class : public tree_node {
 public:
    tree_node *copy()		 { return copy_Case(); }
    virtual Case copy_Case() = 0;
+
+#ifdef REGISTER_ERROR
+   REGISTER_ERROR
+#endif
 
 #ifdef Case_EXTRAS
    Case_EXTRAS
@@ -228,6 +234,7 @@ public:
    std::string gen_multiple_def_error() {
       return std::to_string(get_line_number()) + " Method " + name->get_string() + " is multiply defined.\n";
    }
+   void register_class(Class_ c) { class_ = c; }
    void check_error();
    // Formals have different names.
    void check_unique();
@@ -260,6 +267,7 @@ public:
    std::string gen_multiple_def_error() {
       return std::to_string(get_line_number()) + " Attribute " + name->get_string() + " is multiply defined.\n";
    }
+   void register_class(Class_ c) { class_ = c; init->register_class(c); }
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -306,10 +314,9 @@ public:
    }
    Case copy_Case();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) override { class_ = c; expr->register_class(c); }
 
-#ifdef Case_SHARED_EXTRAS
-   Case_SHARED_EXTRAS
-#endif
+
 #ifdef branch_EXTRAS
    branch_EXTRAS
 #endif
@@ -328,6 +335,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; expr->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -354,6 +362,13 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) {
+      class_ = c; 
+      expr->register_class(c); 
+      for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
+         actual->nth(i)->register_class(c);
+      }
+   }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -378,6 +393,13 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) {
+      class_ = c; 
+      expr->register_class(c); 
+      for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
+         actual->nth(i)->register_class(c);
+      }
+   }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -402,6 +424,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; then_exp->register_class(c); else_exp->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -424,6 +447,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; pred->register_class(c); body->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -446,6 +470,13 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) {
+      class_ = c;
+      expr->register_class(c);
+      for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
+         cases->nth(i)->register_class(c);
+      }
+   }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -466,6 +497,11 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) {
+      for (int i = body->first(); body->more(i); i = body->next(i)) {
+         body->nth(i)->register_class(c);
+      }
+   }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -492,6 +528,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; init->register_class(c); body->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -514,6 +551,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; e1->register_class(c); e2->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -536,6 +574,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; e1->register_class(c); e2->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -558,6 +597,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; e1->register_class(c); e2->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -580,6 +620,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; e1->register_class(c); e2->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -600,6 +641,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; e1->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -622,6 +664,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; e1->register_class(c); e2->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -644,6 +687,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; e1->register_class(c); e2->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -666,6 +710,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; e1->register_class(c); e2->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -686,6 +731,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; e1->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -706,6 +752,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -726,6 +773,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -746,6 +794,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -766,6 +815,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -786,6 +836,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; e1->register_class(c); }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -804,6 +855,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
@@ -824,6 +876,7 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
+   void register_class(Class_ c) { class_ = c; }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS

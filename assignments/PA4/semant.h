@@ -70,6 +70,10 @@ public:
   }
 };
 
+static bool check_type_conform(DepEnv, Symbol, Symbol, Symbol);
+static Symbol find_least_upper_bound(DepEnv, Symbol, Symbol);
+static Symbol handle_SELF_TYPE(Symbol, Symbol);
+
 
 #endif
 
