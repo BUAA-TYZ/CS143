@@ -120,11 +120,13 @@ void dump_with_types(ostream&,int);
 
 
 #define Case_EXTRAS                             \
+virtual Symbol get_type_decl() = 0;      \
 virtual Symbol type_infer(O_Env, MethodEnv, DepEnv, Symbol) = 0;			\
 virtual void dump_with_types(ostream& ,int) = 0;
 
 
 #define branch_EXTRAS                                   \
+Symbol get_type_decl() override { return type_decl; }      \
 Symbol type_infer(O_Env, MethodEnv, DepEnv, Symbol) override;			\
 void dump_with_types(ostream& ,int);
 

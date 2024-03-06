@@ -102,16 +102,18 @@ ClassTable::ClassTable(Classes classes) : semant_errors(0) , error_stream(cerr) 
         }
         
         add_class(c);
+
+        // Ensure that all infos are collected.
+        if (semant_errors != 0) {
+            return;
+        }
     }
 
-    // if (!check_all_defined(classes) || !check_cycle(classes) || !check_main() || !check_consistent_method(classes)) {
-    //     return;
-    // }
-
-    check_all_defined(classes);
-    if (!check_cycle(classes)) {
+    // Ensure that all classes are defined(otherwise trigger out_of_range) and have no cycle(otherwise dead-loop).
+    if (!check_all_defined(classes) || !check_cycle(classes)) {
         return;
     }
+
     check_main();
     check_consistent_method();
     check_consistent_attr();
@@ -390,10 +392,17 @@ void ClassTable::add_class(Class_ c) {
     c->clear_error_msg();
 
     if (dependency.find(name) != dependency.end()) {
-            // Multiple definitions error
-            ++semant_errors;
-            error_stream << filename << ':' << line_number << ": " << "Class " << name << " was previously defined.\n";
-            return;
+        // Multiple definitions error
+        ++semant_errors;
+        error_stream << filename << ':' << line_number << ": " << "Class " << name << " was previously defined.\n";
+        return;
+    }
+
+    if (parent == Int || parent == Bool || parent == Str || parent == SELF_TYPE) {
+        ++semant_errors;
+        error_stream << filename << ':' << line_number << ": " << 
+        "Class " << name << " cannot inherit class " << parent << ".\n";
+        return;
     }
 
     dependency[name] = parent;
@@ -578,8 +587,9 @@ void method_class::check_unique() {
 
         if (names.find(name) != names.end()) {
             int line_number = f->get_line_number();
-            notify_error(std::to_string(line_number) + " Formal parameter " + 
+            notify_error(std::to_string(line_number) + ": Formal parameter " + 
             name->get_string() + " is multiply defined.\n");
+            return;
         } else {
             names.emplace(name);
         }
@@ -595,6 +605,10 @@ void method_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, Symb
     o_env.addid(self, &SELF_TYPE);
     Symbol res_type = handle_SELF_TYPE(return_type, C);
     Symbol expr_type = expr->type_infer(o_env, m_env, dep_env, C);
+    if (expr_type != SELF_TYPE && dep_env.find(expr_type) == dep_env.end()) {
+        notify_error(std::to_string(get_line_number()) + 
+        ": Undefined return type " + expr_type->get_string() + " in method " + name->get_string() + ".\n");
+    }
     if (!check_type_conform(dep_env, expr_type, res_type, C)) {
         notify_error(std::to_string(get_line_number()) + 
         ": Inferred return type " + expr_type->get_string() + " of method " + name->get_string() + 
@@ -651,7 +665,7 @@ Symbol static_dispatch_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv de
     for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
         formal_types.emplace_back(actual->nth(i)->type_infer(o_env, m_env, dep_env, C));
     } 
-    if (m_env.count(C) == 0) {
+    if (m_env.count(type_name) == 0) {
         notify_error(std::to_string(get_line_number()) + 
         ": Static dispatch to undefined class " + type_name->get_string() + ".\n");
         return Object; 
@@ -661,12 +675,12 @@ Symbol static_dispatch_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv de
         " does not conform to declared static dispatch type " + type_name->get_string() + ".\n");  
         return Object; 
     }
-    if (m_env.at(C).count(name) == 0) {
+    if (m_env.at(type_name).count(name) == 0) {
         notify_error(std::to_string(get_line_number()) + 
         ": Static dispatch to undefined method " + name->get_string() + ".\n");
         return Object;
     }
-    const auto& method_types = m_env.at(C).at(name);
+    const auto& method_types = m_env.at(type_name).at(name);
 
     int n = formal_types.size();
     if (n != method_types.size() - 1) {
@@ -685,7 +699,7 @@ Symbol static_dispatch_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv de
         }
     }
     if (res_type != Object) {
-        res_type = handle_SELF_TYPE(method_types.back(), C);
+        res_type = handle_SELF_TYPE(method_types.back(), init_type);
     }
     set_type(res_type);
     return res_type;
@@ -697,7 +711,7 @@ Symbol dispatch_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, 
     for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
         formal_types.emplace_back(actual->nth(i)->type_infer(o_env, m_env, dep_env, C));
     } 
-    Symbol cur = C;
+    Symbol cur = handle_SELF_TYPE(init_type, C);
     while (m_env.at(cur).count(name) == 0) {
         if (cur == Object) {
             notify_error(std::to_string(get_line_number()) + 
@@ -725,7 +739,7 @@ Symbol dispatch_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, 
         }
     }
     if (res_type != Object) {
-        res_type = handle_SELF_TYPE(method_types.back(), C);
+        res_type = handle_SELF_TYPE(method_types.back(), init_type);
     }
     set_type(res_type);
     return res_type;
@@ -761,8 +775,18 @@ Symbol typcase_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, S
     // Must have some cases. This is ensured by parser.
     int i = cases->first();
     Symbol res_type = cases->nth(i)->type_infer(o_env, m_env, dep_env, C);
+
+    std::unordered_set<Symbol> case_types{cases->nth(i)->get_type_decl()};
     for (i = cases->next(i); cases->more(i); i = cases->next(i)) {
-        res_type = find_least_upper_bound(dep_env, res_type, cases->nth(i)->type_infer(o_env, m_env, dep_env, C));
+        auto c = cases->nth(i);
+        Symbol type = c->get_type_decl();
+        if (case_types.find(type) != case_types.end()) {
+            notify_error(std::to_string(get_line_number()) + 
+            ": Duplicate branch " + type->get_string() + " in case statement.\n");
+            return Object;
+        }
+        case_types.emplace(type);
+        res_type = find_least_upper_bound(dep_env, res_type, c->type_infer(o_env, m_env, dep_env, C));
     }
     set_type(res_type);
     return res_type;
@@ -778,20 +802,25 @@ Symbol block_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, Sym
 }
 
 Symbol let_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, Symbol C) {
+    if (identifier == self) {
+        notify_error(std::to_string(get_line_number()) + ": 'self' cannot be bound in a 'let' expression.\n"); 
+        return Object;
+    }
+
     Symbol init_type = init->type_infer(o_env, m_env, dep_env, C);
-    Symbol id_type = handle_SELF_TYPE(type_decl, C);
     Symbol res_type;
     // Let-No-Init
     if (init_type == No_type) {
         o_env.enterscope();
-        o_env.addid(identifier, &id_type);
+        o_env.addid(identifier, &type_decl);
         res_type = body->type_infer(o_env, m_env, dep_env, C); 
         o_env.exitscope();
+        set_type(res_type);
         return res_type;
     }
     // Let-Init
     o_env.enterscope();
-    o_env.addid(identifier, &id_type);
+    o_env.addid(identifier, &type_decl);
     if (!check_type_conform(dep_env, init_type, type_decl, C)) {
         notify_error(std::to_string(get_line_number()) + ": Inferred type " + 
         init_type->get_string() + " of initialization of " + identifier->get_string() + 
@@ -921,9 +950,12 @@ Symbol bool_const_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env
 }
 
 Symbol new__class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, Symbol C) {
-    Symbol res_type = handle_SELF_TYPE(type_name, C);
-    set_type(res_type);
-    return res_type;
+    if (type_name != SELF_TYPE && dep_env.find(type_name) == dep_env.end()) {
+        notify_error(std::to_string(get_line_number()) + 
+        ": 'new' used with undefined class " + type_name->get_string() + ".\n"); 
+    }
+    set_type(type_name);
+    return type_name;
 }
 
 Symbol isvoid_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, Symbol C) {
@@ -973,11 +1005,11 @@ Symbol branch_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, Sy
 // Maybe it's the user's responsibility to ensure that types are not No_type.
 // Check whether type_1 < type_2 (type_1 is the subclass of type_2)
 static bool check_type_conform(DepEnv dep_env, Symbol type_1, Symbol type_2, Symbol C) {
+    if (type_2 == SELF_TYPE) {
+        return type_1 == SELF_TYPE;
+    }
     if (type_1 == SELF_TYPE) {
         type_1 = C;
-    }
-    if (type_2 == SELF_TYPE) {
-        return false;
     }
     Symbol cur = type_1;
     if (type_2 == Object) {
