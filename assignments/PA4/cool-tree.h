@@ -487,6 +487,7 @@ public:
    Expression copy_Expression();
    void dump(ostream& stream, int n);
    void register_class(Class_ c) {
+      class_ = c;
       for (int i = body->first(); body->more(i); i = body->next(i)) {
          body->nth(i)->register_class(c);
       }

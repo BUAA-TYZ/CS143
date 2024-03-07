@@ -116,9 +116,14 @@ ClassTable::ClassTable(Classes classes) : semant_errors(0) , error_stream(cerr) 
 
     check_main();
     check_consistent_method();
-    check_consistent_attr();
+    check_consistent_attr();    
+}
 
-    // Start to type inference.
+// Start to type inference.
+void ClassTable::type_infer(Classes classes) {
+    if (semant_errors != 0) {
+        return;
+    }
     for(int i = classes->first(); classes->more(i); i = classes->next(i)) {
         Class_ c = classes->nth(i);
         Symbol name = c->get_name();
@@ -134,6 +139,7 @@ ClassTable::ClassTable(Classes classes) : semant_errors(0) , error_stream(cerr) 
     }
 }
 
+// Check the override method has the same argument list.
 bool ClassTable::check_consistent_method() {
     bool flag = true;
     for (const auto& [c, methods]: class_methods) {
@@ -160,6 +166,7 @@ bool ClassTable::check_consistent_method() {
                         << "Redefined method " << m_name <<" has different argument types.\n";
                         flag = false;
                     }
+                    break;
                 }
                 name = parent;
             }
@@ -168,6 +175,7 @@ bool ClassTable::check_consistent_method() {
     return flag;
 }
 
+// Check whether there is redefined attribute.
 bool ClassTable::check_consistent_attr() {
     bool flag = true;
     for (const auto& [c, attrs]: class_attrs) {
@@ -484,10 +492,9 @@ void program_class::semant()
 {
     initialize_constants();
 
-    /* ClassTable constructor may do some semantic analysis */
     ClassTable *classtable = new ClassTable(classes);
 
-    /* some semantic analysis code may go here */
+    classtable->type_infer(classes);
 
     if (classtable->errors()) {
 	cerr << "Compilation halted due to static semantic errors." << endl;
@@ -502,20 +509,20 @@ void program_class::semant()
 //
 ////////////////////////////////////////////////////////////////////
 
+// For class, collect the needed info.
+// For features, register the class. 
 void class__class::collect_info() {
     // We have to dynamic_cast to collect the info of methods and attrs.
     // We also check the error of them.
     for(int i = features->first(); features->more(i); i = features->next(i)) { 
         auto f = features->nth(i);
-        method_class* method = dynamic_cast<method_class*>(f);
-        if (method != nullptr) {
+        if (method_class* method = dynamic_cast<method_class*>(f); method != nullptr) {
             method->register_class(this);
             method->check_error();
             add_method(method);
             method_line.emplace(method->get_name(), method->get_line_number());
         } else {
-            attr_class* attr = dynamic_cast<attr_class*>(f);
-            if (attr != nullptr) {
+            if (attr_class* attr = dynamic_cast<attr_class*>(f); attr != nullptr) {
                 attr->register_class(this);
                 add_attr(attr);
                 attr_line.emplace(attr->get_name(), attr->get_line_number());

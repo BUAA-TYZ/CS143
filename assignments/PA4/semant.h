@@ -50,6 +50,8 @@ public:
   ostream& semant_error(Class_ c);
   ostream& semant_error(Symbol filename, tree_node *t);
 
+  void type_infer(Classes);
+
   bool has_parent(Symbol name);
 
   // To report the info more accurately.(e.g. what is #line of the class at the entrance in check_cycle)
