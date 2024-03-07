@@ -234,10 +234,9 @@ public:
    std::string gen_multiple_def_error() {
       return std::to_string(get_line_number()) + " Method " + name->get_string() + " is multiply defined.\n";
    }
-   void register_class(Class_ c) { class_ = c; }
-   void check_error();
+   void register_class(Class_ c) { class_ = c; expr->register_class(c); }
    // Formals have different names.
-   void check_unique();
+   void check_error();
 
 #ifdef Feature_SHARED_EXTRAS
    Feature_SHARED_EXTRAS
@@ -373,9 +372,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef static_dispatch_EXTRAS
-   static_dispatch_EXTRAS
-#endif
 };
 
 
@@ -404,9 +400,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef dispatch_EXTRAS
-   dispatch_EXTRAS
-#endif
 };
 
 
@@ -424,13 +417,15 @@ public:
    }
    Expression copy_Expression();
    void dump(ostream& stream, int n);
-   void register_class(Class_ c) { class_ = c; then_exp->register_class(c); else_exp->register_class(c); }
+   void register_class(Class_ c) {
+      class_ = c;
+      pred->register_class(c);
+      then_exp->register_class(c);
+      else_exp->register_class(c);
+   }
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef cond_EXTRAS
-   cond_EXTRAS
 #endif
 };
 
@@ -451,9 +446,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef loop_EXTRAS
-   loop_EXTRAS
 #endif
 };
 
@@ -481,9 +473,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef typcase_EXTRAS
-   typcase_EXTRAS
-#endif
 };
 
 
@@ -505,9 +494,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef block_EXTRAS
-   block_EXTRAS
 #endif
 };
 
@@ -533,9 +519,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef let_EXTRAS
-   let_EXTRAS
-#endif
 };
 
 
@@ -555,9 +538,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef plus_EXTRAS
-   plus_EXTRAS
 #endif
 };
 
@@ -579,9 +559,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef sub_EXTRAS
-   sub_EXTRAS
-#endif
 };
 
 
@@ -601,9 +578,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef mul_EXTRAS
-   mul_EXTRAS
 #endif
 };
 
@@ -625,9 +599,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef divide_EXTRAS
-   divide_EXTRAS
-#endif
 };
 
 
@@ -645,9 +616,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef neg_EXTRAS
-   neg_EXTRAS
 #endif
 };
 
@@ -669,9 +637,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef lt_EXTRAS
-   lt_EXTRAS
-#endif
 };
 
 
@@ -691,9 +656,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef eq_EXTRAS
-   eq_EXTRAS
 #endif
 };
 
@@ -715,9 +677,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef leq_EXTRAS
-   leq_EXTRAS
-#endif
 };
 
 
@@ -735,9 +694,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef comp_EXTRAS
-   comp_EXTRAS
 #endif
 };
 
@@ -757,9 +713,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef int_const_EXTRAS
-   int_const_EXTRAS
-#endif
 };
 
 
@@ -777,9 +730,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef bool_const_EXTRAS
-   bool_const_EXTRAS
 #endif
 };
 
@@ -799,9 +749,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef string_const_EXTRAS
-   string_const_EXTRAS
-#endif
 };
 
 
@@ -819,9 +766,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef new__EXTRAS
-   new__EXTRAS
 #endif
 };
 
@@ -841,9 +785,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
 #endif
-#ifdef isvoid_EXTRAS
-   isvoid_EXTRAS
-#endif
 };
 
 
@@ -859,9 +800,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef no_expr_EXTRAS
-   no_expr_EXTRAS
 #endif
 };
 
@@ -880,9 +818,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
    Expression_SHARED_EXTRAS
-#endif
-#ifdef object_EXTRAS
-   object_EXTRAS
 #endif
 };
 

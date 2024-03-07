@@ -70,9 +70,9 @@ public:
   }
 };
 
-static bool check_type_conform(DepEnv, Symbol, Symbol, Symbol);
-static Symbol find_least_upper_bound(DepEnv, Symbol, Symbol);
-static Symbol handle_SELF_TYPE(Symbol, Symbol);
+static bool check_type_conform(DepEnv dep_env, Symbol type_1, Symbol type_2, Symbol C);
+static Symbol find_least_upper_bound(DepEnv dep_env, Symbol type_1, Symbol type_2, Symbol C);
+static Symbol handle_SELF_TYPE(Symbol type, Symbol C);
 
 
 #endif

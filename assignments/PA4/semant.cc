@@ -94,7 +94,7 @@ ClassTable::ClassTable(Classes classes) : semant_errors(0) , error_stream(cerr) 
         Symbol parent = c->get_parent();
         int line_number = c->get_line_number();
 
-        if (name == Object || name == Int || name == Bool || name == Str || name == IO) {
+        if (name == Object || name == Int || name == Bool || name == Str || name == IO || name == SELF_TYPE) {
             // Redefinition of basic class.
             ++semant_errors;
             error_stream << filename << ':' << line_number << ": " << "Redefinition of basic class " << name << ".\n";
@@ -566,32 +566,37 @@ void Class__class::receive_error(std::string error) {
 ////////////////////////////////////////////////////////////////////
 
 const std::vector<Symbol>& method_class::collect_type() {
-    expr->register_class(get_class());
-
     for(int i = formals->first(); formals->more(i); i = formals->next(i)) {
-        types.emplace_back(formals->nth(i)->get_type_decl());   
+        auto f = formals->nth(i);
+        Symbol formal_type = f->get_type_decl();
+        if (formal_type == SELF_TYPE) {
+            notify_error(std::to_string(f->get_line_number()) + ": Formal parameter" + 
+            f->get_name()->get_string() + " cannot have type SELF_TYPE.\n"); 
+        } else {
+            types.emplace_back(formal_type);   
+        }
     }
     types.emplace_back(return_type);
     return types;
 }
 
 void method_class::check_error() {
-    check_unique();
-}
-
-void method_class::check_unique() {
     std::unordered_set<Symbol> names;
     for(int i = formals->first(); formals->more(i); i = formals->next(i)) {
         auto f = formals->nth(i);
         Symbol name = f->get_name();
 
         if (names.find(name) != names.end()) {
-            int line_number = f->get_line_number();
-            notify_error(std::to_string(line_number) + ": Formal parameter " + 
+            notify_error(std::to_string(f->get_line_number()) + ": Formal parameter " + 
             name->get_string() + " is multiply defined.\n");
             return;
         } else {
-            names.emplace(name);
+            if (name == self) {
+                notify_error(std::to_string(f->get_line_number()) + 
+                ": 'self' cannot be the name of a formal parameter.\n"); 
+            } else {
+                names.emplace(name);
+            }
         }
     }
 }
@@ -603,16 +608,15 @@ void method_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, Symb
         o_env.addid(name, &types[i]);
     }
     o_env.addid(self, &SELF_TYPE);
-    Symbol res_type = handle_SELF_TYPE(return_type, C);
     Symbol expr_type = expr->type_infer(o_env, m_env, dep_env, C);
     if (expr_type != SELF_TYPE && dep_env.find(expr_type) == dep_env.end()) {
         notify_error(std::to_string(get_line_number()) + 
         ": Undefined return type " + expr_type->get_string() + " in method " + name->get_string() + ".\n");
     }
-    if (!check_type_conform(dep_env, expr_type, res_type, C)) {
+    if (!check_type_conform(dep_env, expr_type, return_type, C)) {
         notify_error(std::to_string(get_line_number()) + 
         ": Inferred return type " + expr_type->get_string() + " of method " + name->get_string() + 
-        " does not conform to declared return type " + res_type->get_string() + ".\n");
+        " does not conform to declared return type " + return_type->get_string() + ".\n");
     }
     o_env.exitscope();
 }
@@ -647,6 +651,9 @@ Symbol assign_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, Sy
         ": Assignment to undeclared variable " + name->get_string() + ".\n");
     } else {
         origin_type = *o_env.lookup(name);
+        if (name == self) {
+            notify_error(std::to_string(get_line_number()) + ": Cannot assign to 'self'.\n"); 
+        }
     }
     Symbol res_type = expr->type_infer(o_env, m_env, dep_env, C);
     if (!check_type_conform(dep_env, res_type, origin_type, C)) {
@@ -675,14 +682,22 @@ Symbol static_dispatch_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv de
         " does not conform to declared static dispatch type " + type_name->get_string() + ".\n");  
         return Object; 
     }
-    if (m_env.at(type_name).count(name) == 0) {
-        notify_error(std::to_string(get_line_number()) + 
-        ": Static dispatch to undefined method " + name->get_string() + ".\n");
-        return Object;
+    if (type_name == SELF_TYPE) {
+        notify_error(std::to_string(get_line_number()) + ": Static dispatch to SELF_TYPE.\n");  
+        return Object; 
     }
-    const auto& method_types = m_env.at(type_name).at(name);
+    Symbol cur = type_name;
+    while (m_env.at(cur).count(name) == 0) {
+        if (cur == Object) {
+            notify_error(std::to_string(get_line_number()) + 
+            ": Static dispatch to undefined method " + name->get_string() + ".\n");
+            return Object;
+        }
+        cur = dep_env.at(cur);
+    }
+    const auto& method_types = m_env.at(cur).at(name);
 
-    int n = formal_types.size();
+    size_t n = formal_types.size();
     if (n != method_types.size() - 1) {
        notify_error(std::to_string(get_line_number()) + 
         ": Method " + name->get_string() + " called with wrong number of arguments.\n");
@@ -722,9 +737,9 @@ Symbol dispatch_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, 
     }
     const auto& method_types = m_env.at(cur).at(name);
 
-    int n = formal_types.size();
+    size_t n = formal_types.size();
     if (n != method_types.size() - 1) {
-       notify_error(std::to_string(get_line_number()) + 
+        notify_error(std::to_string(get_line_number()) + 
         ": Method " + name->get_string() + " called with wrong number of arguments.\n");
         return Object; 
     }
@@ -748,7 +763,7 @@ Symbol dispatch_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, 
 Symbol cond_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, Symbol C) {
     Symbol predicate = pred->type_infer(o_env, m_env, dep_env, C);
     Symbol res_type = find_least_upper_bound(dep_env, 
-    then_exp->type_infer(o_env, m_env, dep_env, C), else_exp->type_infer(o_env, m_env, dep_env, C));
+    then_exp->type_infer(o_env, m_env, dep_env, C), else_exp->type_infer(o_env, m_env, dep_env, C), C);
     if (predicate != Bool) {
         notify_error(std::to_string(get_line_number()) + 
         ": Predicate of 'if' have type " + predicate->get_string() + " instead Bool.\n");
@@ -766,7 +781,7 @@ Symbol loop_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, Symb
         ": Predicate of 'while' have type " + predicate->get_string() + " instead Bool.\n");
         res_type = Bool;
     }
-    set_type(res_type);
+    set_type(Object);
     return Object;
 }
 
@@ -786,7 +801,7 @@ Symbol typcase_class::type_infer(O_Env o_env, MethodEnv m_env, DepEnv dep_env, S
             return Object;
         }
         case_types.emplace(type);
-        res_type = find_least_upper_bound(dep_env, res_type, c->type_infer(o_env, m_env, dep_env, C));
+        res_type = find_least_upper_bound(dep_env, res_type, c->type_infer(o_env, m_env, dep_env, C), C);
     }
     set_type(res_type);
     return res_type;
@@ -1025,7 +1040,13 @@ static bool check_type_conform(DepEnv dep_env, Symbol type_1, Symbol type_2, Sym
 }
 
 // Find the smallest commmon ancestor of type 1 and type 2
-static Symbol find_least_upper_bound(DepEnv dep_env, Symbol type_1, Symbol type_2) {
+static Symbol find_least_upper_bound(DepEnv dep_env, Symbol type_1, Symbol type_2, Symbol C) {
+    if (type_1 == SELF_TYPE) {
+        type_1 = C;
+    }
+    if (type_2 == SELF_TYPE) {
+        type_2 = C;
+    }
     Symbol cur = type_1;
     std::unordered_set<Symbol> parents{cur};
     // Don't use do... while... because of `at()`
