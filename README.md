@@ -102,3 +102,48 @@ Summary
 - Parser has two targets:
 	1. Accept or reject if there are some errors being detected.
 	2. Generate an AST.
+- The unconfortable syntax makes the parse easier.
+	- The if statement must be matched with a else statement. So we don't care about their precedence. 
+
+
+### PA4
+
+- The operator '<<' of entries is override.
+- Use **Observer design pattern** to pass the error message.
+	- Furthermore, use the macro *REGISTER_ERROR* to inject the error handler, which is very convenient.
+- Use `using` instead of `typedef`.
+	- Even can use template alias.
+	- Simulate JAVA's interface which is more reasonable.
+	- `template<typename K, typename V> using HashMap = std::unordered_map<K, V>;`
+- When taking values from HashMap, using `at()` instead of `operator[]` which is wrong for **const** set container.
+- Because of the low efficiency of `List`, we always pre-load the variable.(e.g `Class_ c = classes->nth(i); `)
+	- In other word, in each loop-statement, only use `nth()` once.
+- Ensure that we invoke `register_class()` and `type_infer()` on each sub expression.
+- Debug the core dump
+	- `ulimit -c unlimited`
+	- `echo /dump/core-%e-%p-%t > /proc/sys/kernel/core_pattern`
+	- `sudo mkdir dump`
+	- `chown tyz /dump && chgrp tyz /dump` or `chown tyz.tyz /dump`
+	- `cgdb ./semant /dump/core-semant-723101-1709786082`
+	- First, use core dump to locate where the error happens.
+	- Then, debug `cgdb ./semant` to find the error.
+		- `lexer grading/...cl | parser > test.txt` to make the AST
+		- `cgdb ./semant` enter the gdb
+		- `b main` `b dispatch_class::type_infer` set the breakpoint according to the core dump
+		- `r < test.txt`
+		- `c`
+		- Use print statement and etc.
+
+Summary
+---
+- In this part, we have done **semantic analysis**.
+	- We apply the type check so that there won't have type errors at runtime.
+	- We also check some low-level errors.
+		- All classes should be defined and defined only once.
+		- There is no inheritance cycle.
+		- Attributes defined in a class should be defined only once and not be defined in its parents' classes.
+		- Methods can be override, but with the same parameters.
+		- The use of *self* is reasonable.
+		- etc.
+- At this point, we have done the front-end of the compiler. Almost all compiler-time errors have been detected.
+
