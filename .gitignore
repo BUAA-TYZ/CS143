@@ -1,0 +1,8 @@
+*.s
+*.o
+grading
+lexer
+cool-lex.*
+lextest.*
+
+.vscode
