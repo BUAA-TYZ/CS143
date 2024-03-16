@@ -112,14 +112,14 @@ public:     \
     type = s;                                                                                                \
     return this;                                                                                             \
   }                                                                                                          \
-  virtual void code(AttrEnv, ostream &) = 0;                                                                          \
+  virtual void code(SEnv, int, AttrEnv, ostream &) = 0;                                                                          \
   virtual int cal_num_temp() = 0;     \
   virtual void dump_with_types(ostream &, int) = 0;                                                          \
   void dump_type(ostream &, int);                                                                            \
   Expression_class() { type = (Symbol)NULL; }
 
 #define Expression_SHARED_EXTRAS                                                                             \
-  void code(AttrEnv, ostream &);                                                                                      \
+  void code(SEnv, int, AttrEnv, ostream &);                                                                                      \
   void dump_with_types(ostream &, int);
 
 #endif
