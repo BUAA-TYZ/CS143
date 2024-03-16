@@ -21,6 +21,10 @@ template <typename K, typename V> using HashMap = std::unordered_map<K, V>;
 using AttrEnv = const HashMap<Symbol, int> &;
 // Store the pos of variables except attrs.
 using SEnv = SymbolTable<Symbol, int>*;
+// <Class, <method, index>>
+using MEnv = const HashMap<Symbol, const HashMap<Symbol, int> &> &;
+
+class CgenNode;
 
 inline Boolean copy_Boolean(Boolean b) { return b; }
 inline void assert_Boolean(Boolean) {}
@@ -87,7 +91,7 @@ private:      \
 public:     \
   int get_num_temp() { return num_temp; }     \
   void cal_num_temp();     \
-  void code(SEnv, int, AttrEnv, ostream &);                                                                              \
+  void code(SEnv, int, CgenNode*, MEnv, ostream &);                                                                              \
   Symbol get_name() override { return name; }                                                                \
   void dump_with_types(ostream &, int);
 
@@ -112,14 +116,14 @@ public:     \
     type = s;                                                                                                \
     return this;                                                                                             \
   }                                                                                                          \
-  virtual void code(SEnv, int, AttrEnv, ostream &) = 0;                                                                          \
+  virtual void code(SEnv, int, CgenNode*, MEnv, ostream &) = 0;                                                                          \
   virtual int cal_num_temp() = 0;     \
   virtual void dump_with_types(ostream &, int) = 0;                                                          \
   void dump_type(ostream &, int);                                                                            \
   Expression_class() { type = (Symbol)NULL; }
 
 #define Expression_SHARED_EXTRAS                                                                             \
-  void code(SEnv, int, AttrEnv, ostream &);                                                                                      \
+  void code(SEnv, int, CgenNode*, MEnv, ostream &);                                                                                      \
   void dump_with_types(ostream &, int);
 
 #endif

@@ -812,10 +812,10 @@ void CgenClassTable::code_dispatchTab() {
 //
 //*****************************************************************
 
-void CgenClassTable::code_initializer() {
+void CgenClassTable::code_initializer(MEnv m_pos) {
   for (List<CgenNode> *l = nds; l; l = l->tl()) {
     auto *node = l->hd();
-    node->emit_init(str);
+    node->emit_init(m_pos, str);
   }
 }
 
@@ -825,10 +825,10 @@ void CgenClassTable::code_initializer() {
 //
 //*****************************************************************
 
-void CgenClassTable::code_methods() {
+void CgenClassTable::code_methods(MEnv m_pos) {
   for (List<CgenNode> *l = nds; l; l = l->tl()) {
     auto *node = l->hd();
-    node->emit_method_def(str);
+    node->emit_method_def(m_pos, str);
   }
 }
 
@@ -864,29 +864,30 @@ void CgenClassTable::code() {
   }
   code_global_text();
 
-  // Collect the attr pos for the initializer and class methods
-  collect_attr_pos();
+  // Collect the pos for the initializer and class methods
+  collect_pos();
 
   if (cgen_debug) {
     cout << "coding object initializer" << endl;
   }
-  code_initializer();
+  code_initializer(class_m_pos);
 
   if (cgen_debug) {
     cout << "coding object methods" << endl;
   }
-  code_methods();
+  code_methods(class_m_pos);
 }
 
 CgenNodeP CgenClassTable::root() { return probe(Object); }
 
 // Ensure that the parent class is initialized before the subclass.
-void CgenClassTable::collect_attr_pos() {
+void CgenClassTable::collect_pos() {
   auto cur = root();
   std::deque<CgenNodeP> bfs{cur};
   while (!bfs.empty()) {
     cur = bfs.front();
-    cur->collect_attr_pos();
+    cur->collect_pos();
+    class_m_pos.emplace(cur->get_name(), cur->get_methods_pos());
     bfs.pop_front();
     for (List<CgenNode> *l = cur->get_children(); l; l = l->tl()) {
       auto node = l->hd();
@@ -958,7 +959,7 @@ void CgenNode::cal_proto_size() {
   }
 }
 
-void CgenNode::emit_init(ostream &str) {
+void CgenNode::emit_init(MEnv m_env, ostream &str) {
   auto sym_tab = new SymbolTable<Symbol, int>();
 
   str << name << CLASSINIT_SUFFIX << LABEL;
@@ -972,7 +973,7 @@ void CgenNode::emit_init(ostream &str) {
   int attr_start_index = proto_size - attrs.size();
   for (auto [a_name, attr]: attrs) {
     if (attr->has_init_expr()) {
-      attr->code(sym_tab, 0, attrs_pos, str);
+      attr->code(sym_tab, 0, attrs_pos, m_env, name, str);
       emit_store(ACC, attr_start_index, SELF, str);
     }
     attr_start_index++;
@@ -982,13 +983,21 @@ void CgenNode::emit_init(ostream &str) {
   delete sym_tab;
 }
 
-void CgenNode::collect_attr_pos() {
+void CgenNode::collect_pos() {
   CgenNodeP cur = parentnd;
   attrs_pos = cur->inherit_attrs_pos();
-  int start_index = proto_size - attrs.size();
+  m_pos = cur->inherit_methods_pos();
+
+  int attr_start_index = proto_size - attrs.size();
   for (auto [a_name, attr]: attrs) {
-    attrs_pos.emplace(a_name, start_index++);
+    attrs_pos.emplace(a_name, attr_start_index++);
   }
+
+  int method_start_index = m_pos.size();
+  for (auto [m_name, method]: methods) {
+    m_pos.emplace(m_name, method_start_index++);
+  }
+
   if (cgen_debug) {
     cout << name << ": " << endl;
     for (auto [a_name, a_pos]: attrs_pos) {
@@ -997,11 +1006,11 @@ void CgenNode::collect_attr_pos() {
   }
 }
 
-void CgenNode::emit_method_def(ostream &str) {
+void CgenNode::emit_method_def(MEnv m_env, ostream &str) {
   auto sym_tab = new SymbolTable<Symbol, int>();
   for (auto [m_name, method]: methods) {
     emit_method_ref(name, m_name, str); str << endl;
-    method->code(sym_tab, 0, attrs_pos, str);
+    method->code(sym_tab, 0, attrs_pos, m_env, name, str);
   }
   delete sym_tab;
 }
@@ -1030,7 +1039,7 @@ void attr_class::cal_num_temp() {
 //
 //*****************************************************************
 
-void method_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void method_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   o_pos->enterscope();
   // Record the formal pos
   for(int i = formals->first(); formals->more(i); i = formals->next(i)) {
@@ -1040,19 +1049,19 @@ void method_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
   emit_start_frame(DEFAULT_OBJFIELDS + num_temp, s);
   emit_addiu(FP, SP, 4, s);
   emit_move(SELF, ACC, s);
-  expr->code(o_pos, temp_index, a_pos, s);
+  expr->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_end_frame(DEFAULT_OBJFIELDS + num_temp + formals->len(), DEFAULT_OBJFIELDS + num_temp, s);
   o_pos->exitscope();
 }
 
-void attr_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void attr_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   o_pos->enterscope();
-  init->code(o_pos, temp_index, a_pos, s);
+  init->code(o_pos, temp_index, a_pos, m_pos, C, s);
   o_pos->exitscope();
 }
 
-void assign_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
-  expr->code(o_pos, temp_index, a_pos, s);
+void assign_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+  expr->code(o_pos, temp_index, a_pos, m_pos, C, s);
   auto pos = o_pos->lookup(name);
   if (pos != NULL) {
     emit_store(ACC, *pos, FP, s);
@@ -1061,68 +1070,69 @@ void assign_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
   } 
 }
 
-void static_dispatch_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {}
+void static_dispatch_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
 
-void dispatch_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+}
+
+void dispatch_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   int no_void_obj = label_index++;
-  if (dynamic_cast<no_expr_class*>(expr) != nullptr) {
-    emit_move(ACC, SELF, s);
-  } else {
-    expr->code(o_pos, temp_index, a_pos, s);
-  }
+  expr->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_bne(ACC, ZERO, no_void_obj, s);
-  emit_partial_load_address(ACC, s); stringtable.lookup_string("<basic class>")->code_ref(s);
+  emit_partial_load_address(ACC, s); stringtable.lookup(0)->code_ref(s); s << endl;
   emit_load_imm(T1,  get_line_number(), s);
   s << JAL << " _dispatch_abort" << endl;
   emit_label_def(no_void_obj, s);
   // load dispatch pointer
   emit_load(T1, 2, ACC, s);
+  int m_index = m_pos.at(handle_SELF_TYPE(expr->get_type(), C)).at(name);
+  emit_load(T1, m_index, T1, s);
+  emit_jalr(T1, s);
 }
 
-void cond_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void cond_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   int false_br = label_index++;
   int true_br = label_index++;
   int end_if = label_index++;
-  pred->code(o_pos, temp_index, a_pos, s);
+  pred->code(o_pos, temp_index, a_pos, m_pos, C, s);
   // load bool val
   emit_fetch_bool(T1, ACC, s);
   emit_beqz(T1, false_br, s);
   emit_label_def(true_br, s);
-  then_exp->code(o_pos, temp_index, a_pos, s);
+  then_exp->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_branch(end_if, s);
   emit_label_def(false_br, s);
-  else_exp->code(o_pos, temp_index, a_pos, s);
+  else_exp->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_label_def(end_if, s);
 }
 
-void loop_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void loop_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   int begin_loop = label_index++;
   int end_loop = label_index++;
   emit_label_def(begin_loop, s);
-  pred->code(o_pos, temp_index, a_pos, s);
+  pred->code(o_pos, temp_index, a_pos, m_pos, C, s);
   // load bool val
   emit_fetch_bool(T1, ACC, s);
   emit_beqz(T1, end_loop, s);
-  body->code(o_pos, temp_index, a_pos, s);
+  body->code(o_pos, temp_index, a_pos, m_pos, C, s);
   s << BRANCH; emit_label_ref(begin_loop, s); s << endl;
   emit_label_def(end_loop, s);
 }
 
-void typcase_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {}
+void typcase_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {}
 
-void block_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void block_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   for (int i = body->first(); body->more(i); i = body->next(i)) {
-    body->nth(i)->code(o_pos, temp_index, a_pos, s);
+    body->nth(i)->code(o_pos, temp_index, a_pos, m_pos, C, s);
   }
 }
 
-void let_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {}
+void let_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {}
 
 // sub, mul, div are copied from here.
-void plus_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
-  e1->code(o_pos, temp_index, a_pos, s);
+void plus_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, s);
+  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_get_top(T1, s);
 
   // Copy a new int Object
@@ -1138,10 +1148,10 @@ void plus_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
   emit_pop(1, s);
 }
 
-void sub_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
-  e1->code(o_pos, temp_index, a_pos, s);
+void sub_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, s);
+  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_get_top(T1, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
   emit_fetch_int(T1, T1, s);
@@ -1151,10 +1161,10 @@ void sub_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
   emit_pop(1, s);
 }
 
-void mul_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
-  e1->code(o_pos, temp_index, a_pos, s);
+void mul_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, s);
+  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_get_top(T1, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
   emit_fetch_int(T1, T1, s);
@@ -1164,10 +1174,10 @@ void mul_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
   emit_pop(1, s);
 }
 
-void divide_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
-  e1->code(o_pos, temp_index, a_pos, s);
+void divide_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, s);
+  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_get_top(T1, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
   emit_fetch_int(T1, T1, s);
@@ -1177,8 +1187,8 @@ void divide_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
   emit_pop(1, s);
 }
 
-void neg_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
-  e1->code(o_pos, temp_index, a_pos, s);
+void neg_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
   emit_fetch_int(T1, ACC, s);
   emit_neg(T1, T1, s);
@@ -1186,11 +1196,11 @@ void neg_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
 }
 
 // leq is copied from here.
-void lt_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void lt_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   int true_br = label_index++;
-  e1->code(o_pos, temp_index, a_pos, s);
+  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, s);
+  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_get_top(T1, s);
   // Int(i1) in T1, Int(i2) in ACC
   // i1 in T1, i2 in T2
@@ -1206,11 +1216,11 @@ void lt_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
   emit_pop(1, s);
 }
 
-void eq_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void eq_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   int no_basic_eq = label_index++;
-  e1->code(o_pos, temp_index, a_pos, s);
+  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, s);
+  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_get_top(T1, s);
   emit_move(T2, ACC, s);
   // Pointer semantic: T1 == T2
@@ -1222,11 +1232,11 @@ void eq_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
   emit_label_def(no_basic_eq, s);
 }
 
-void leq_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void leq_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   int true_br = label_index++;
-  e1->code(o_pos, temp_index, a_pos, s);
+  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, s);
+  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_get_top(T1, s);
   emit_fetch_int(T1, T1, s);
   emit_fetch_int(T2, ACC, s);
@@ -1238,9 +1248,9 @@ void leq_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
 }
 
 // not
-void comp_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void comp_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   int true_br = label_index++;
-  e1->code(o_pos, temp_index, a_pos, s);
+  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_fetch_bool(T1, ACC, s);
   // T1 is 1 or 0.
   emit_load_bool(ACC, truebool, s);
@@ -1250,20 +1260,20 @@ void comp_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
   emit_label_def(true_br, s);
 }
 
-void int_const_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void int_const_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   //
   // Need to be sure we have an IntEntry *, not an arbitrary Symbol
   //
   emit_load_int(ACC, inttable.lookup_string(token->get_string()), s);
 }
 
-void string_const_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void string_const_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   emit_load_string(ACC, stringtable.lookup_string(token->get_string()), s);
 }
 
-void bool_const_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) { emit_load_bool(ACC, BoolConst(val), s); }
+void bool_const_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) { emit_load_bool(ACC, BoolConst(val), s); }
 
-void new__class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void new__class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   // Jump to the protoOb
   emit_partial_load_address(ACC, s); emit_protobj_ref(type_name, s); s << endl;
   // Copy a new  Object
@@ -1271,18 +1281,22 @@ void new__class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
   s << JAL; emit_init_ref(type_name, s); s << endl;
 }
 
-void isvoid_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void isvoid_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
   int true_br = label_index++;
-  e1->code(o_pos, temp_index, a_pos, s);
+  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
   emit_load_bool(ACC, truebool, s);
   emit_beqz(T1, true_br, s);
   emit_load_bool(ACC, falsebool, s);
   emit_label_def(true_br, s);
 }
 
-void no_expr_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {}
+void no_expr_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {}
 
-void object_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, ostream &s) {
+void object_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+  if (name == self) {
+    emit_move(ACC, SELF, s);
+    return;
+  }
   auto pos = o_pos->lookup(name);
   if (pos != NULL) {
     emit_load(ACC, *pos, FP, s);
@@ -1346,4 +1360,11 @@ const std::vector<Symbol> &method_class::collect_type() {
 
 bool attr_class::has_init_expr() {
     return dynamic_cast<no_expr_class*>(init) == nullptr;
+}
+
+static Symbol handle_SELF_TYPE(Symbol type, Symbol C) {
+    if (type == SELF_TYPE) {
+        return C;
+    }
+    return type;
 }
