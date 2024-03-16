@@ -2,6 +2,7 @@
 #include "emit.h"
 #include "symtab.h"
 #include <assert.h>
+#include <deque>
 #include <stdio.h>
 
 enum Basicness { Basic, NotBasic };
@@ -15,6 +16,9 @@ enum Basicness { Basic, NotBasic };
 // we have to assign the tag index starting at 5.
 #define START_TAG_INDEX 5
 
+// Label index must be a global variable.
+int label_index = 0;
+
 class CgenClassTable;
 typedef CgenClassTable *CgenClassTableP;
 
@@ -25,7 +29,7 @@ class CgenClassTable : public SymbolTable<Symbol, CgenNode> {
 private:
   List<CgenNode> *nds;
   ostream &str;
-  // Object 0 | Str 1 | Int 2 | Bool 3 | IO 4 | -1 for SELF_TYPE, No_Class...
+  // Object 0 | IO 1 | Int 2 | Bool 3 | Str 4 | -1 for SELF_TYPE, No_Class...
   int stringclasstag;
   int intclasstag;
   int boolclasstag;
@@ -45,7 +49,12 @@ private:
 
   void code_prototype();
   void code_class_nameTab();
+  void code_class_nameTab(List<CgenNode> *l);
+  void code_class_objTab();
   void code_dispatchTab();
+
+  void code_initializer();
+  void code_methods();
 
   // The following creates an inheritance graph from
   // a list of classes.  The graph is implemented as
@@ -57,6 +66,8 @@ private:
   void install_classes(Classes cs);
   void build_inheritance_tree();
   void set_relations(CgenNodeP nd);
+
+  void collect_attr_pos();
 
 public:
   CgenClassTable(Classes, ostream &str);
@@ -71,12 +82,16 @@ private:
   Basicness basic_status;   // `Basic' if class is basic
                             // `NotBasic' otherwise
   int class_tag = INVALID_TAG;
+
+  // attr_start_index = proto_size - attrs.size()
   int proto_size = INVALID_SIZE;
   // methods <Method m, arg Type 0, arg Type 1...>
   // attrs <Method m, Type t>
   // For the iteration order, use std::vector instead of HashMap
-  std::vector<std::pair<Symbol, const std::vector<Symbol> &>> methods{};
-  std::vector<std::pair<Symbol, Symbol>> attrs{};
+  std::vector<std::pair<Symbol, method_class*>> methods{};
+  std::vector<std::pair<Symbol, attr_class*>> attrs{};
+
+  HashMap<Symbol, int> attrs_pos{};
 
 public:
   CgenNode(Class_ c, Basicness bstatus, CgenClassTableP class_table, int tag);
@@ -93,6 +108,12 @@ public:
   void add_method(method_class *);
   void add_attr(attr_class *);
 
+  // Collect offset of attrs
+  void collect_attr_pos();
+  HashMap<Symbol, int> inherit_attrs_pos() {
+    return attrs_pos;
+  }
+
   // Calculate the prototype size.
   void cal_proto_size();
   int get_proto_size() { return proto_size; }
@@ -100,6 +121,9 @@ public:
 
   void emit_methods(ostream &str);
   void emit_default_attrs(ostream &str);
+
+  void emit_init(ostream &str);
+  void emit_method_def(ostream &str);
 };
 
 class BoolConst {

@@ -11,7 +11,7 @@
 #include "cool-tree.handcode.h"
 #include "tree.h"
 
-template <typename K, typename V> using HashMap = std::unordered_map<K, V>;
+static int max(int x, int y) { return x < y ? y: x; }
 
 // define the class for phylum
 // define simple phylum - Program
@@ -204,6 +204,7 @@ public:
   void dump(ostream &stream, int n);
 
   Symbol collect_type() { return type_decl; }
+  bool has_init_expr();
 
 #ifdef Feature_SHARED_EXTRAS
   Feature_SHARED_EXTRAS
@@ -272,6 +273,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return expr->cal_num_temp(); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -298,6 +300,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return expr->cal_num_temp(); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -322,6 +325,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return expr->cal_num_temp(); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -346,6 +350,9 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { 
+    return max(pred->cal_num_temp(), max(then_exp->cal_num_temp(), else_exp->cal_num_temp())); 
+  }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -368,6 +375,8 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return max(pred->cal_num_temp(), body->cal_num_temp()); }
+
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -390,6 +399,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return expr->cal_num_temp(); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -408,6 +418,15 @@ public:
   block_class(Expressions a1) { body = a1; }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override {
+    int i = body->first();
+    int res = body->nth(i)->cal_num_temp();
+    i = body->next(i);
+    for ( ; body->more(i); i = body->next(i)) {
+      res = max(res, body->nth(i)->cal_num_temp());
+    }
+    return res;
+  }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -434,6 +453,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return 1 + max(init->cal_num_temp(), body->cal_num_temp()); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -456,6 +476,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return max(e1->cal_num_temp(), e2->cal_num_temp()); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -478,6 +499,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return max(e1->cal_num_temp(), e2->cal_num_temp()); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -500,6 +522,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return max(e1->cal_num_temp(), e2->cal_num_temp()); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -522,6 +545,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return max(e1->cal_num_temp(), e2->cal_num_temp()); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -540,6 +564,7 @@ public:
   neg_class(Expression a1) { e1 = a1; }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return e1->cal_num_temp(); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -562,6 +587,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return max(e1->cal_num_temp(), e2->cal_num_temp()); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -584,6 +610,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return max(e1->cal_num_temp(), e2->cal_num_temp()); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -606,6 +633,7 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return max(e1->cal_num_temp(), e2->cal_num_temp()); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -624,6 +652,7 @@ public:
   comp_class(Expression a1) { e1 = a1; }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return e1->cal_num_temp(); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -642,6 +671,7 @@ public:
   int_const_class(Symbol a1) { token = a1; }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return 0; }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -660,6 +690,7 @@ public:
   bool_const_class(Boolean a1) { val = a1; }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return 0; }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -678,6 +709,7 @@ public:
   string_const_class(Symbol a1) { token = a1; }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return 0; }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -696,6 +728,7 @@ public:
   new__class(Symbol a1) { type_name = a1; }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return 0; }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -714,6 +747,7 @@ public:
   isvoid_class(Expression a1) { e1 = a1; }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return e1->cal_num_temp(); }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -730,6 +764,7 @@ public:
   no_expr_class() {}
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return 0; }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
@@ -748,6 +783,7 @@ public:
   object_class(Symbol a1) { name = a1; }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
+  int cal_num_temp() override { return 0; }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS

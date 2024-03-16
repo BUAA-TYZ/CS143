@@ -6,6 +6,7 @@
 
 #include "cool.h"
 #include "stringtab.h"
+#include "symtab.h"
 #include "tree.h"
 #include <iostream>
 #include <string>
@@ -14,6 +15,12 @@
 #include <vector>
 #define yylineno curr_lineno;
 extern int yylineno;
+
+template <typename K, typename V> using HashMap = std::unordered_map<K, V>;
+// <Attr name, offset> Access with offset * WORD_SIZE($s0)
+using AttrEnv = const HashMap<Symbol, int> &;
+// Store the pos of variables except attrs.
+using SEnv = SymbolTable<Symbol, int>*;
 
 inline Boolean copy_Boolean(Boolean b) { return b; }
 inline void assert_Boolean(Boolean) {}
@@ -73,7 +80,14 @@ typedef Cases_class *Cases;
   virtual Symbol get_name() = 0;                                                                             \
   virtual void dump_with_types(ostream &, int) = 0;
 
+// # of temporary variables created by let, type... 
 #define Feature_SHARED_EXTRAS                                                                                \
+private:      \
+  int num_temp;   \
+public:     \
+  int get_num_temp() { return num_temp; }     \
+  void cal_num_temp();     \
+  void code(SEnv, int, AttrEnv, ostream &);                                                                              \
   Symbol get_name() override { return name; }                                                                \
   void dump_with_types(ostream &, int);
 
@@ -98,13 +112,14 @@ typedef Cases_class *Cases;
     type = s;                                                                                                \
     return this;                                                                                             \
   }                                                                                                          \
-  virtual void code(ostream &) = 0;                                                                          \
+  virtual void code(AttrEnv, ostream &) = 0;                                                                          \
+  virtual int cal_num_temp() = 0;     \
   virtual void dump_with_types(ostream &, int) = 0;                                                          \
   void dump_type(ostream &, int);                                                                            \
   Expression_class() { type = (Symbol)NULL; }
 
 #define Expression_SHARED_EXTRAS                                                                             \
-  void code(ostream &);                                                                                      \
+  void code(AttrEnv, ostream &);                                                                                      \
   void dump_with_types(ostream &, int);
 
 #endif
