@@ -273,7 +273,7 @@ static void emit_push(char *reg, ostream &str) {
 }
 
 static void emit_get_top(char *reg, ostream &str) {
-  emit_load(reg, 4, SP, str);
+  emit_load(reg, 1, SP, str);
 }
 
 // addiu sp, sp, size * WORD_SIZE
@@ -828,6 +828,11 @@ void CgenClassTable::code_initializer(MEnv m_pos) {
 void CgenClassTable::code_methods(MEnv m_pos) {
   for (List<CgenNode> *l = nds; l; l = l->tl()) {
     auto *node = l->hd();
+    auto node_name = node->get_name();
+    // The methods are defined in the runtime system.
+    if (node_name == Object || node_name == Str || node_name == IO) {
+      continue;
+    }
     node->emit_method_def(m_pos, str);
   }
 }
@@ -1009,7 +1014,7 @@ void CgenNode::collect_pos() {
 void CgenNode::emit_method_def(MEnv m_env, ostream &str) {
   auto sym_tab = new SymbolTable<Symbol, int>();
   for (auto [m_name, method]: methods) {
-    emit_method_ref(name, m_name, str); str << endl;
+    emit_method_ref(name, m_name, str); str << ':' << endl;
     method->code(sym_tab, 0, this, m_env, str);
   }
   delete sym_tab;
@@ -1070,17 +1075,52 @@ void assign_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, 
   } 
 }
 
+// This is copied from dispatch_class
 void static_dispatch_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
+  int no_void_obj = label_index++;
 
+  int n = actual->len();
+  emit_addiu(SP, SP, - n * WORD_SIZE, s);
+  for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
+    actual->nth(i)->code(o_pos, temp_index, node, m_pos, s);
+    emit_store(ACC, i + 1, SP, s);
+  }
+
+  expr->code(o_pos, temp_index, node, m_pos, s);
+  emit_bne(ACC, ZERO, no_void_obj, s);
+
+  emit_partial_load_address(ACC, s); 
+  stringtable.lookup_string(node->get_filename()->get_string())->code_ref(s); s << endl;
+  emit_load_imm(T1,  get_line_number(), s);
+  s << JAL << " _dispatch_abort" << endl;
+
+  emit_label_def(no_void_obj, s);
+  // load dispatch table 
+  emit_partial_load_address(T1, s); s << type_name << DISPTAB_SUFFIX << endl;
+  int m_index = m_pos.at(type_name).at(name);
+  emit_load(T1, m_index, T1, s);
+  emit_jalr(T1, s);
 }
 
 void dispatch_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   int no_void_obj = label_index++;
+
+  // All subexprs must be evaluated before e0.
+  int n = actual->len();
+  emit_addiu(SP, SP, - n * WORD_SIZE, s);
+  for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
+    actual->nth(i)->code(o_pos, temp_index, node, m_pos, s);
+    emit_store(ACC, i + 1, SP, s);
+  }
+
   expr->code(o_pos, temp_index, node, m_pos, s);
   emit_bne(ACC, ZERO, no_void_obj, s);
-  emit_partial_load_address(ACC, s); stringtable.lookup(0)->code_ref(s); s << endl;
+
+  emit_partial_load_address(ACC, s); 
+  stringtable.lookup_string(node->get_filename()->get_string())->code_ref(s); s << endl;
   emit_load_imm(T1,  get_line_number(), s);
   s << JAL << " _dispatch_abort" << endl;
+
   emit_label_def(no_void_obj, s);
   // load dispatch pointer
   emit_load(T1, 2, ACC, s);
@@ -1126,17 +1166,26 @@ void block_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, o
   }
 }
 
-void let_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {}
+void let_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
+  o_pos->enterscope();
+  o_pos->addid(identifier, new int(temp_index));
+  init->code(o_pos, temp_index + 1, node, m_pos, s);
+  emit_store(ACC, temp_index, FP, s);
+  body->code(o_pos, temp_index + 1, node, m_pos, s);
+  o_pos->exitscope();
+}
 
 // sub, mul, div are copied from here.
 void plus_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
   e2->code(o_pos, temp_index, node, m_pos, s);
-  emit_get_top(T1, s);
 
   // Copy a new int Object
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
+
+  // After copy
+  emit_get_top(T1, s);
 
   // Int(i1) in T1, Int(i2) in ACC
   // i1 in T1, i2 in T2
@@ -1152,8 +1201,8 @@ void sub_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ost
   e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
   e2->code(o_pos, temp_index, node, m_pos, s);
-  emit_get_top(T1, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
+  emit_get_top(T1, s);
   emit_fetch_int(T1, T1, s);
   emit_fetch_int(T2, ACC, s);
   emit_sub(T1, T1, T2, s); 
@@ -1165,8 +1214,8 @@ void mul_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ost
   e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
   e2->code(o_pos, temp_index, node, m_pos, s);
-  emit_get_top(T1, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
+  emit_get_top(T1, s);
   emit_fetch_int(T1, T1, s);
   emit_fetch_int(T2, ACC, s);
   emit_mul(T1, T1, T2, s); 
@@ -1178,8 +1227,8 @@ void divide_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, 
   e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
   e2->code(o_pos, temp_index, node, m_pos, s);
-  emit_get_top(T1, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
+  emit_get_top(T1, s);
   emit_fetch_int(T1, T1, s);
   emit_fetch_int(T2, ACC, s);
   emit_div(T1, T1, T2, s); 
