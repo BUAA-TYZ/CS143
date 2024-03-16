@@ -36,6 +36,8 @@ private:
 
   int tag_index = START_TAG_INDEX;
 
+  HashMap<Symbol, const HashMap<Symbol, int> &> class_m_pos{};
+
   int get_next_tag() { return tag_index++; }
 
   // The following methods emit code for
@@ -53,8 +55,8 @@ private:
   void code_class_objTab();
   void code_dispatchTab();
 
-  void code_initializer();
-  void code_methods();
+  void code_initializer(MEnv);
+  void code_methods(MEnv);
 
   // The following creates an inheritance graph from
   // a list of classes.  The graph is implemented as
@@ -67,7 +69,7 @@ private:
   void build_inheritance_tree();
   void set_relations(CgenNodeP nd);
 
-  void collect_attr_pos();
+  void collect_pos();
 
 public:
   CgenClassTable(Classes, ostream &str);
@@ -92,6 +94,7 @@ private:
   std::vector<std::pair<Symbol, attr_class*>> attrs{};
 
   HashMap<Symbol, int> attrs_pos{};
+  HashMap<Symbol, int> m_pos{};
 
 public:
   CgenNode(Class_ c, Basicness bstatus, CgenClassTableP class_table, int tag);
@@ -108,11 +111,12 @@ public:
   void add_method(method_class *);
   void add_attr(attr_class *);
 
-  // Collect offset of attrs
-  void collect_attr_pos();
-  HashMap<Symbol, int> inherit_attrs_pos() {
-    return attrs_pos;
-  }
+  // Collect offset of attrs and methods
+  void collect_pos();
+  const HashMap<Symbol, int> & get_methods_pos() { return m_pos; }
+  const HashMap<Symbol, int> & get_attrs_pos() { return attrs_pos; }
+  HashMap<Symbol, int> inherit_attrs_pos() { return attrs_pos; }
+  HashMap<Symbol, int> inherit_methods_pos() { return m_pos; }
 
   // Calculate the prototype size.
   void cal_proto_size();
@@ -122,8 +126,8 @@ public:
   void emit_methods(ostream &str);
   void emit_default_attrs(ostream &str);
 
-  void emit_init(ostream &str);
-  void emit_method_def(ostream &str);
+  void emit_init(MEnv m_env, ostream &str);
+  void emit_method_def(MEnv m_env, ostream &str);
 };
 
 class BoolConst {
@@ -135,3 +139,5 @@ public:
   void code_def(ostream &, int boolclasstag);
   void code_ref(ostream &) const;
 };
+
+static Symbol handle_SELF_TYPE(Symbol type, Symbol C);

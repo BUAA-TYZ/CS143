@@ -973,7 +973,7 @@ void CgenNode::emit_init(MEnv m_env, ostream &str) {
   int attr_start_index = proto_size - attrs.size();
   for (auto [a_name, attr]: attrs) {
     if (attr->has_init_expr()) {
-      attr->code(sym_tab, 0, attrs_pos, m_env, name, str);
+      attr->code(sym_tab, 0, this, m_env, str);
       emit_store(ACC, attr_start_index, SELF, str);
     }
     attr_start_index++;
@@ -1010,7 +1010,7 @@ void CgenNode::emit_method_def(MEnv m_env, ostream &str) {
   auto sym_tab = new SymbolTable<Symbol, int>();
   for (auto [m_name, method]: methods) {
     emit_method_ref(name, m_name, str); str << endl;
-    method->code(sym_tab, 0, attrs_pos, m_env, name, str);
+    method->code(sym_tab, 0, this, m_env, str);
   }
   delete sym_tab;
 }
@@ -1039,7 +1039,7 @@ void attr_class::cal_num_temp() {
 //
 //*****************************************************************
 
-void method_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void method_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   o_pos->enterscope();
   // Record the formal pos
   for(int i = formals->first(); formals->more(i); i = formals->next(i)) {
@@ -1049,34 +1049,34 @@ void method_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, S
   emit_start_frame(DEFAULT_OBJFIELDS + num_temp, s);
   emit_addiu(FP, SP, 4, s);
   emit_move(SELF, ACC, s);
-  expr->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  expr->code(o_pos, temp_index, node, m_pos, s);
   emit_end_frame(DEFAULT_OBJFIELDS + num_temp + formals->len(), DEFAULT_OBJFIELDS + num_temp, s);
   o_pos->exitscope();
 }
 
-void attr_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void attr_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   o_pos->enterscope();
-  init->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  init->code(o_pos, temp_index, node, m_pos, s);
   o_pos->exitscope();
 }
 
-void assign_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
-  expr->code(o_pos, temp_index, a_pos, m_pos, C, s);
+void assign_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
+  expr->code(o_pos, temp_index, node, m_pos, s);
   auto pos = o_pos->lookup(name);
   if (pos != NULL) {
     emit_store(ACC, *pos, FP, s);
   } else {
-    emit_store(ACC, a_pos.at(name), SELF, s);
+    emit_store(ACC, node->get_attrs_pos().at(name), SELF, s);
   } 
 }
 
-void static_dispatch_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void static_dispatch_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
 
 }
 
-void dispatch_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void dispatch_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   int no_void_obj = label_index++;
-  expr->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  expr->code(o_pos, temp_index, node, m_pos, s);
   emit_bne(ACC, ZERO, no_void_obj, s);
   emit_partial_load_address(ACC, s); stringtable.lookup(0)->code_ref(s); s << endl;
   emit_load_imm(T1,  get_line_number(), s);
@@ -1084,55 +1084,55 @@ void dispatch_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos,
   emit_label_def(no_void_obj, s);
   // load dispatch pointer
   emit_load(T1, 2, ACC, s);
-  int m_index = m_pos.at(handle_SELF_TYPE(expr->get_type(), C)).at(name);
+  int m_index = m_pos.at(handle_SELF_TYPE(expr->get_type(), node->get_name())).at(name);
   emit_load(T1, m_index, T1, s);
   emit_jalr(T1, s);
 }
 
-void cond_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void cond_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   int false_br = label_index++;
   int true_br = label_index++;
   int end_if = label_index++;
-  pred->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  pred->code(o_pos, temp_index, node, m_pos, s);
   // load bool val
   emit_fetch_bool(T1, ACC, s);
   emit_beqz(T1, false_br, s);
   emit_label_def(true_br, s);
-  then_exp->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  then_exp->code(o_pos, temp_index, node, m_pos, s);
   emit_branch(end_if, s);
   emit_label_def(false_br, s);
-  else_exp->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  else_exp->code(o_pos, temp_index, node, m_pos, s);
   emit_label_def(end_if, s);
 }
 
-void loop_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void loop_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   int begin_loop = label_index++;
   int end_loop = label_index++;
   emit_label_def(begin_loop, s);
-  pred->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  pred->code(o_pos, temp_index, node, m_pos, s);
   // load bool val
   emit_fetch_bool(T1, ACC, s);
   emit_beqz(T1, end_loop, s);
-  body->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  body->code(o_pos, temp_index, node, m_pos, s);
   s << BRANCH; emit_label_ref(begin_loop, s); s << endl;
   emit_label_def(end_loop, s);
 }
 
-void typcase_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {}
+void typcase_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {}
 
-void block_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void block_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   for (int i = body->first(); body->more(i); i = body->next(i)) {
-    body->nth(i)->code(o_pos, temp_index, a_pos, m_pos, C, s);
+    body->nth(i)->code(o_pos, temp_index, node, m_pos, s);
   }
 }
 
-void let_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {}
+void let_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {}
 
 // sub, mul, div are copied from here.
-void plus_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
-  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
+void plus_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
+  e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e2->code(o_pos, temp_index, node, m_pos, s);
   emit_get_top(T1, s);
 
   // Copy a new int Object
@@ -1148,10 +1148,10 @@ void plus_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Sym
   emit_pop(1, s);
 }
 
-void sub_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
-  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
+void sub_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
+  e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e2->code(o_pos, temp_index, node, m_pos, s);
   emit_get_top(T1, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
   emit_fetch_int(T1, T1, s);
@@ -1161,10 +1161,10 @@ void sub_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symb
   emit_pop(1, s);
 }
 
-void mul_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
-  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
+void mul_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
+  e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e2->code(o_pos, temp_index, node, m_pos, s);
   emit_get_top(T1, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
   emit_fetch_int(T1, T1, s);
@@ -1174,10 +1174,10 @@ void mul_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symb
   emit_pop(1, s);
 }
 
-void divide_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
-  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
+void divide_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
+  e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e2->code(o_pos, temp_index, node, m_pos, s);
   emit_get_top(T1, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
   emit_fetch_int(T1, T1, s);
@@ -1187,8 +1187,8 @@ void divide_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, S
   emit_pop(1, s);
 }
 
-void neg_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
-  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
+void neg_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
+  e1->code(o_pos, temp_index, node, m_pos, s);
   s << JAL; emit_method_ref(Object, idtable.add_string("copy"), s); s << endl;
   emit_fetch_int(T1, ACC, s);
   emit_neg(T1, T1, s);
@@ -1196,11 +1196,11 @@ void neg_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symb
 }
 
 // leq is copied from here.
-void lt_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void lt_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   int true_br = label_index++;
-  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e2->code(o_pos, temp_index, node, m_pos, s);
   emit_get_top(T1, s);
   // Int(i1) in T1, Int(i2) in ACC
   // i1 in T1, i2 in T2
@@ -1216,11 +1216,11 @@ void lt_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbo
   emit_pop(1, s);
 }
 
-void eq_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void eq_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   int no_basic_eq = label_index++;
-  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e2->code(o_pos, temp_index, node, m_pos, s);
   emit_get_top(T1, s);
   emit_move(T2, ACC, s);
   // Pointer semantic: T1 == T2
@@ -1232,11 +1232,11 @@ void eq_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbo
   emit_label_def(no_basic_eq, s);
 }
 
-void leq_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void leq_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   int true_br = label_index++;
-  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e1->code(o_pos, temp_index, node, m_pos, s);
   emit_push(ACC, s);
-  e2->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e2->code(o_pos, temp_index, node, m_pos, s);
   emit_get_top(T1, s);
   emit_fetch_int(T1, T1, s);
   emit_fetch_int(T2, ACC, s);
@@ -1248,9 +1248,9 @@ void leq_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symb
 }
 
 // not
-void comp_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void comp_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   int true_br = label_index++;
-  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e1->code(o_pos, temp_index, node, m_pos, s);
   emit_fetch_bool(T1, ACC, s);
   // T1 is 1 or 0.
   emit_load_bool(ACC, truebool, s);
@@ -1260,20 +1260,20 @@ void comp_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Sym
   emit_label_def(true_br, s);
 }
 
-void int_const_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void int_const_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   //
   // Need to be sure we have an IntEntry *, not an arbitrary Symbol
   //
   emit_load_int(ACC, inttable.lookup_string(token->get_string()), s);
 }
 
-void string_const_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void string_const_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   emit_load_string(ACC, stringtable.lookup_string(token->get_string()), s);
 }
 
-void bool_const_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) { emit_load_bool(ACC, BoolConst(val), s); }
+void bool_const_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) { emit_load_bool(ACC, BoolConst(val), s); }
 
-void new__class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void new__class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   // Jump to the protoOb
   emit_partial_load_address(ACC, s); emit_protobj_ref(type_name, s); s << endl;
   // Copy a new  Object
@@ -1281,18 +1281,18 @@ void new__class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Sym
   s << JAL; emit_init_ref(type_name, s); s << endl;
 }
 
-void isvoid_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void isvoid_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   int true_br = label_index++;
-  e1->code(o_pos, temp_index, a_pos, m_pos, C, s);
+  e1->code(o_pos, temp_index, node, m_pos, s);
   emit_load_bool(ACC, truebool, s);
   emit_beqz(T1, true_br, s);
   emit_load_bool(ACC, falsebool, s);
   emit_label_def(true_br, s);
 }
 
-void no_expr_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {}
+void no_expr_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {}
 
-void object_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, Symbol C, ostream &s) {
+void object_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   if (name == self) {
     emit_move(ACC, SELF, s);
     return;
@@ -1301,7 +1301,7 @@ void object_class::code(SEnv o_pos, int temp_index, AttrEnv a_pos, MEnv m_pos, S
   if (pos != NULL) {
     emit_load(ACC, *pos, FP, s);
   } else {
-    emit_load(ACC, a_pos.at(name), SELF, s);
+    emit_load(ACC, node->get_attrs_pos().at(name), SELF, s);
   }
 }
 
