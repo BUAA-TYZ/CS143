@@ -943,12 +943,25 @@ int CgenNode::get_tag() const {
 }
 
 void CgenNode::emit_methods(ostream &str) {
-  if (parentnd->get_name() != No_class) {
-    parentnd->emit_methods(str);
+  // <Method name, it's owner class>
+  std::vector<std::pair<Symbol, Symbol>> class_method{};
+  HashSet<Symbol> used_methods{};
+  CgenNodeP cur = this;
+  while (cur->get_name() != No_class) {
+    auto c_methods = cur->get_methods();
+    for (auto iter = c_methods.rbegin(); iter != c_methods.rend(); ++iter) {
+      auto m_name = (*iter).first;
+      if (used_methods.count(m_name) != 0) {
+        continue;
+      }
+      used_methods.emplace(m_name);
+      class_method.emplace_back(m_name, cur->get_name());
+    }
+    cur = cur->get_parentnd();
   }
-  for (auto &method : methods) {
+  for (auto iter = class_method.rbegin(); iter != class_method.rend(); ++iter) {
     str << WORD;
-    emit_method_ref(name, method.first, str);
+    emit_method_ref((*iter).second, (*iter).first, str);
     str << endl;
   }
 }

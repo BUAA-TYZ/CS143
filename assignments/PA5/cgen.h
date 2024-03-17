@@ -105,6 +105,7 @@ public:
   int basic() { return (basic_status == Basic); }
   void set_tag(int t) { class_tag = t; }
   int get_tag() const;
+  const std::vector<std::pair<Symbol, method_class *>> &get_methods() { return methods; }
 
   // Collect Info of methods and attrs
   void collect_info();

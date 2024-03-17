@@ -17,6 +17,7 @@
 extern int yylineno;
 
 template <typename K, typename V> using HashMap = std::unordered_map<K, V>;
+template <typename K> using HashSet = std::unordered_set<K>;
 // <Attr name, offset> Access with offset * WORD_SIZE($s0)
 using AttrEnv = const HashMap<Symbol, int> &;
 // Store the pos of variables except attrs.
