@@ -90,8 +90,8 @@ private:
   // methods <Method m, arg Type 0, arg Type 1...>
   // attrs <Method m, Type t>
   // For the iteration order, use std::vector instead of HashMap
-  std::vector<std::pair<Symbol, method_class*>> methods{};
-  std::vector<std::pair<Symbol, attr_class*>> attrs{};
+  std::vector<std::pair<Symbol, method_class *>> methods{};
+  std::vector<std::pair<Symbol, attr_class *>> attrs{};
 
   HashMap<Symbol, int> attrs_pos{};
   HashMap<Symbol, int> m_pos{};
@@ -113,8 +113,8 @@ public:
 
   // Collect offset of attrs and methods
   void collect_pos();
-  const HashMap<Symbol, int> & get_methods_pos() { return m_pos; }
-  const HashMap<Symbol, int> & get_attrs_pos() { return attrs_pos; }
+  const HashMap<Symbol, int> &get_methods_pos() { return m_pos; }
+  const HashMap<Symbol, int> &get_attrs_pos() { return attrs_pos; }
   HashMap<Symbol, int> inherit_attrs_pos() { return attrs_pos; }
   HashMap<Symbol, int> inherit_methods_pos() { return m_pos; }
 
@@ -140,4 +140,5 @@ public:
   void code_ref(ostream &) const;
 };
 
+static void emit_default(Symbol name, ostream &s);
 static Symbol handle_SELF_TYPE(Symbol type, Symbol C);
