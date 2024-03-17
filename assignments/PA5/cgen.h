@@ -1,6 +1,7 @@
 #include "cool-tree.h"
 #include "emit.h"
 #include "symtab.h"
+#include <algorithm>
 #include <assert.h>
 #include <deque>
 #include <stdio.h>
@@ -11,10 +12,6 @@ enum Basicness { Basic, NotBasic };
 
 #define INVALID_TAG -2
 #define INVALID_SIZE -1
-
-// Because the particularity of the three basic const class
-// we have to assign the tag index starting at 5.
-#define START_TAG_INDEX 5
 
 // Label index must be a global variable.
 int label_index = 0;
@@ -29,16 +26,16 @@ class CgenClassTable : public SymbolTable<Symbol, CgenNode> {
 private:
   List<CgenNode> *nds;
   ostream &str;
-  // Object 0 | IO 1 | Int 2 | Bool 3 | Str 4 | -1 for SELF_TYPE, No_Class...
+
   int stringclasstag;
   int intclasstag;
   int boolclasstag;
 
-  int tag_index = START_TAG_INDEX;
+  int tag_index = 0;
 
   HashMap<Symbol, const HashMap<Symbol, int> &> class_m_pos{};
 
-  int get_next_tag() { return tag_index++; }
+  void set_class_index(CgenNodeP);
 
   // The following methods emit code for
   // constants and global declarations.
@@ -96,6 +93,8 @@ private:
   HashMap<Symbol, int> attrs_pos{};
   HashMap<Symbol, int> m_pos{};
 
+  CgenClassTableP cgen_tab;
+
 public:
   CgenNode(Class_ c, Basicness bstatus, CgenClassTableP class_table, int tag);
 
@@ -104,6 +103,7 @@ public:
   void set_parentnd(CgenNodeP p);
   CgenNodeP get_parentnd() { return parentnd; }
   int basic() { return (basic_status == Basic); }
+  void set_tag(int t) { class_tag = t; }
   int get_tag() const;
 
   // Collect Info of methods and attrs
@@ -128,6 +128,9 @@ public:
 
   void emit_init(MEnv m_env, ostream &str);
   void emit_method_def(MEnv m_env, ostream &str);
+
+  CgenClassTableP get_cgen_tab() { return cgen_tab; }
+  int get_sub_maxtag();
 };
 
 class BoolConst {

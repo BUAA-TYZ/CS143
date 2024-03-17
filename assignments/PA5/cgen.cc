@@ -603,9 +603,9 @@ void CgenClassTable::install_basic_classes() {
   // SELF_TYPE is the self class; it cannot be redefined or inherited.
   // prim_slot is a class known to the code generator.
   //
-  addid(No_class, new CgenNode(class_(No_class, No_class, nil_Features(), filename), Basic, this, -1));
-  addid(SELF_TYPE, new CgenNode(class_(SELF_TYPE, No_class, nil_Features(), filename), Basic, this, -1));
-  addid(prim_slot, new CgenNode(class_(prim_slot, No_class, nil_Features(), filename), Basic, this, -1));
+  addid(No_class, new CgenNode(class_(No_class, No_class, nil_Features(), filename), Basic, this, INVALID_TAG));
+  addid(SELF_TYPE, new CgenNode(class_(SELF_TYPE, No_class, nil_Features(), filename), Basic, this, INVALID_TAG));
+  addid(prim_slot, new CgenNode(class_(prim_slot, No_class, nil_Features(), filename), Basic, this, INVALID_TAG));
 
   //
   // The Object class has no parent class. Its methods are
@@ -623,7 +623,7 @@ void CgenClassTable::install_basic_classes() {
                                  single_Features(method(type_name, nil_Formals(), Str, no_expr()))),
                  single_Features(method(copy, nil_Formals(), SELF_TYPE, no_expr()))),
              filename),
-      Basic, this, 0));
+      Basic, this, INVALID_TAG));
 
   //
   // The IO class inherits from Object. Its methods are
@@ -643,20 +643,20 @@ void CgenClassTable::install_basic_classes() {
                      single_Features(method(in_string, nil_Formals(), Str, no_expr()))),
                  single_Features(method(in_int, nil_Formals(), Int, no_expr()))),
              filename),
-      Basic, this, 1));
+      Basic, this, INVALID_TAG));
 
   //
   // The Int class has no methods and only a single attribute, the
   // "val" for the integer.
   //
   install_class(new CgenNode(class_(Int, Object, single_Features(attr(val, prim_slot, no_expr())), filename),
-                             Basic, this, intclasstag));
+                             Basic, this, INVALID_TAG));
 
   //
   // Bool also has only the "val" slot.
   //
   install_class(new CgenNode(class_(Bool, Object, single_Features(attr(val, prim_slot, no_expr())), filename),
-                             Basic, this, boolclasstag));
+                             Basic, this, INVALID_TAG));
 
   //
   // The class Str has a number of slots and operations:
@@ -679,7 +679,7 @@ void CgenClassTable::install_basic_classes() {
                   substr, append_Formals(single_Formals(formal(arg, Int)), single_Formals(formal(arg2, Int))),
                   Str, no_expr()))),
           filename),
-      Basic, this, stringclasstag));
+      Basic, this, INVALID_TAG));
 }
 
 // CgenClassTable::install_class
@@ -702,7 +702,7 @@ void CgenClassTable::install_class(CgenNodeP nd) {
 
 void CgenClassTable::install_classes(Classes cs) {
   for (int i = cs->first(); cs->more(i); i = cs->next(i))
-    install_class(new CgenNode(cs->nth(i), NotBasic, this, get_next_tag()));
+    install_class(new CgenNode(cs->nth(i), NotBasic, this, INVALID_TAG));
 }
 
 //
@@ -731,6 +731,28 @@ void CgenNode::set_parentnd(CgenNodeP p) {
   assert(parentnd == NULL);
   assert(p != NULL);
   parentnd = p;
+}
+
+//******************************************************************
+//
+//   Set the index of all classes
+//
+//*****************************************************************
+
+void CgenClassTable::set_class_index(CgenNodeP cur) {
+  if (cur->get_name() == Int) {
+    intclasstag = tag_index;
+  } else if (cur->get_name() == Str){
+    stringclasstag = tag_index;
+  } else if (cur->get_name() == Bool) {
+    boolclasstag = tag_index;
+  }
+  cur->set_tag(tag_index++);
+  auto children_list = cur->get_children();
+  for (List<CgenNode> *l = children_list; l; l = l->tl()) {
+    auto *node = l->hd();
+    set_class_index(node);
+  }
 }
 
 //******************************************************************
@@ -832,6 +854,8 @@ void CgenClassTable::code_methods(MEnv m_pos) {
 }
 
 void CgenClassTable::code() {
+  set_class_index(root());
+
   if (cgen_debug) {
     cout << "coding global data" << endl;
   }
@@ -905,8 +929,9 @@ CgenNode::CgenNode(Class_ nd, Basicness bstatus, CgenClassTableP ct, int tag)
     : class__class((const class__class &)*nd), parentnd(NULL), children(NULL), basic_status(bstatus),
       class_tag(tag) {
   stringtable.add_string(name->get_string()); // Add class name to string table
-  if (tag != -1 && tag != INVALID_TAG) {
+  if (tag != -1) {
     collect_info();
+    cgen_tab = ct;
   }
 }
 
@@ -1014,6 +1039,16 @@ void CgenNode::emit_method_def(MEnv m_env, ostream &str) {
     method->code(sym_tab, 0, this, m_env, str);
   }
   delete sym_tab;
+}
+
+int CgenNode::get_sub_maxtag() {
+  int res = class_tag;
+  if (children == NULL) {
+    return res;
+  }
+  List<CgenNode> *l = children;
+  while (l->tl()) { l = l->tl(); }
+  return l->hd()->get_sub_maxtag();
 }
 
 ///////////////////////////////////////////////////////////////////////
@@ -1155,7 +1190,66 @@ void loop_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, os
   emit_label_def(end_loop, s);
 }
 
-void typcase_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {}
+void typcase_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
+  // Tag of class itself, pointer of class
+  std::vector<std::pair<CgenNodeP, branch_class*>> branches{};
+
+  for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
+    auto branch = (branch_class*)cases->nth(i);
+    CgenNodeP cur = node->get_cgen_tab()->probe(branch->type_decl);
+    branches.emplace_back(cur, branch);
+  }
+
+  sort(branches.begin(), branches.end(), [](const auto a, const auto b) {
+    return a.first->get_tag() > b.first->get_tag();
+  });
+
+  if (cgen_debug) {
+    cout << "A CASE STATEMENT: " << endl;
+    for (auto [x, y]: branches) {
+      cout << '\t' << y->name << ":\t" << x->get_tag() << " " << x->get_sub_maxtag() << endl;
+    }
+  }
+  int end_case = label_index++;
+  int begin_case = label_index++;
+
+  expr->code(o_pos, temp_index, node, m_pos, s);
+  emit_bne(ACC, ZERO, begin_case, s);
+  emit_partial_load_address(ACC, s);
+  stringtable.lookup_string(node->get_filename()->get_string())->code_ref(s);
+  s << endl;
+  emit_load_imm(T1, get_line_number(), s);
+  s << JAL << " _case_abort2" << endl;
+
+  emit_label_def(begin_case, s);
+  // load tag
+  emit_load(T1, 0, ACC, s);
+  // Preserve T1
+  emit_push(T1, s);
+
+  int n = branches.size();
+  for (int i = 0; i < n; i++) {
+    auto c = branches[i].first;
+    int c_tag = c->get_tag();
+    int sub_max_tag = c->get_sub_maxtag();
+    int b = label_index++;
+
+    emit_blti(T1, c_tag, b, s);
+    emit_bgti(T1, sub_max_tag, b, s);
+
+    o_pos->enterscope();
+    o_pos->addid(branches[i].second->name, new int(temp_index));
+    branches[i].second->expr->code(o_pos, temp_index + 1, node, m_pos, s);
+    o_pos->exitscope();
+
+    emit_branch(end_case, s);
+    emit_label_def(b, s);
+    emit_get_top(T1, s);
+  }
+  s << JAL << " _case_abort" << endl;
+  emit_label_def(end_case, s);
+  emit_pop(1, s);
+}
 
 void block_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   for (int i = body->first(); body->more(i); i = body->next(i)) {
