@@ -11,7 +11,7 @@
 #include "cool-tree.handcode.h"
 #include "tree.h"
 
-static int max(int x, int y) { return x < y ? y: x; }
+static int max(int x, int y) { return x < y ? y : x; }
 
 // define the class for phylum
 // define simple phylum - Program
@@ -124,11 +124,8 @@ public:
   Program copy_Program();
   void dump(ostream &stream, int n);
 
-#ifdef Program_SHARED_EXTRAS
-  Program_SHARED_EXTRAS
-#endif
 #ifdef program_EXTRAS
-      program_EXTRAS
+  program_EXTRAS
 #endif
 };
 
@@ -150,11 +147,8 @@ public:
   Class_ copy_Class_();
   void dump(ostream &stream, int n);
 
-#ifdef Class__SHARED_EXTRAS
-  Class__SHARED_EXTRAS
-#endif
 #ifdef class__EXTRAS
-      class__EXTRAS
+  class__EXTRAS
 #endif
 };
 
@@ -182,9 +176,6 @@ public:
 #ifdef Feature_SHARED_EXTRAS
   Feature_SHARED_EXTRAS
 #endif
-#ifdef method_EXTRAS
-      method_EXTRAS
-#endif
 };
 
 // define constructor - attr
@@ -209,9 +200,6 @@ public:
 #ifdef Feature_SHARED_EXTRAS
   Feature_SHARED_EXTRAS
 #endif
-#ifdef attr_EXTRAS
-      attr_EXTRAS
-#endif
 };
 
 // define constructor - formal
@@ -228,11 +216,8 @@ public:
   Formal copy_Formal();
   void dump(ostream &stream, int n);
 
-#ifdef Formal_SHARED_EXTRAS
-  Formal_SHARED_EXTRAS
-#endif
 #ifdef formal_EXTRAS
-      formal_EXTRAS
+  formal_EXTRAS
 #endif
 };
 
@@ -251,12 +236,10 @@ public:
   }
   Case copy_Case();
   void dump(ostream &stream, int n);
+  int cal_num_temp() { return expr->cal_num_temp(); }
 
-#ifdef Case_SHARED_EXTRAS
-  Case_SHARED_EXTRAS
-#endif
 #ifdef branch_EXTRAS
-      branch_EXTRAS
+  branch_EXTRAS
 #endif
 };
 
@@ -277,9 +260,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef assign_EXTRAS
-      assign_EXTRAS
 #endif
 };
 
@@ -305,9 +285,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
 #endif
-#ifdef static_dispatch_EXTRAS
-      static_dispatch_EXTRAS
-#endif
 };
 
 // define constructor - dispatch
@@ -330,9 +307,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
 #endif
-#ifdef dispatch_EXTRAS
-      dispatch_EXTRAS
-#endif
 };
 
 // define constructor - cond
@@ -350,15 +324,12 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
-  int cal_num_temp() override { 
-    return max(pred->cal_num_temp(), max(then_exp->cal_num_temp(), else_exp->cal_num_temp())); 
+  int cal_num_temp() override {
+    return max(pred->cal_num_temp(), max(then_exp->cal_num_temp(), else_exp->cal_num_temp()));
   }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef cond_EXTRAS
-      cond_EXTRAS
 #endif
 };
 
@@ -377,12 +348,8 @@ public:
   void dump(ostream &stream, int n);
   int cal_num_temp() override { return max(pred->cal_num_temp(), body->cal_num_temp()); }
 
-
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef loop_EXTRAS
-      loop_EXTRAS
 #endif
 };
 
@@ -399,13 +366,19 @@ public:
   }
   Expression copy_Expression();
   void dump(ostream &stream, int n);
-  int cal_num_temp() override { return expr->cal_num_temp(); }
+  int cal_num_temp() override {
+    int i = cases->first();
+    int cases_need = cases->nth(i)->cal_num_temp();
+    i = cases->next(i);
+    for (; cases->more(i); i = cases->next(i)) {
+      cases_need = max(cases_need, cases->nth(i)->cal_num_temp());
+    }
+    // Cases need one.
+    return max(1, expr->cal_num_temp()) + cases_need;
+  }
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef typcase_EXTRAS
-      typcase_EXTRAS
 #endif
 };
 
@@ -422,7 +395,7 @@ public:
     int i = body->first();
     int res = body->nth(i)->cal_num_temp();
     i = body->next(i);
-    for ( ; body->more(i); i = body->next(i)) {
+    for (; body->more(i); i = body->next(i)) {
       res = max(res, body->nth(i)->cal_num_temp());
     }
     return res;
@@ -430,9 +403,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef block_EXTRAS
-      block_EXTRAS
 #endif
 };
 
@@ -458,9 +428,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
 #endif
-#ifdef let_EXTRAS
-      let_EXTRAS
-#endif
 };
 
 // define constructor - plus
@@ -480,9 +447,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef plus_EXTRAS
-      plus_EXTRAS
 #endif
 };
 
@@ -504,9 +468,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
 #endif
-#ifdef sub_EXTRAS
-      sub_EXTRAS
-#endif
 };
 
 // define constructor - mul
@@ -526,9 +487,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef mul_EXTRAS
-      mul_EXTRAS
 #endif
 };
 
@@ -550,9 +508,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
 #endif
-#ifdef divide_EXTRAS
-      divide_EXTRAS
-#endif
 };
 
 // define constructor - neg
@@ -568,9 +523,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef neg_EXTRAS
-      neg_EXTRAS
 #endif
 };
 
@@ -592,9 +544,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
 #endif
-#ifdef lt_EXTRAS
-      lt_EXTRAS
-#endif
 };
 
 // define constructor - eq
@@ -614,9 +563,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef eq_EXTRAS
-      eq_EXTRAS
 #endif
 };
 
@@ -638,9 +584,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
 #endif
-#ifdef leq_EXTRAS
-      leq_EXTRAS
-#endif
 };
 
 // define constructor - comp
@@ -656,9 +599,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef comp_EXTRAS
-      comp_EXTRAS
 #endif
 };
 
@@ -676,9 +616,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
 #endif
-#ifdef int_const_EXTRAS
-      int_const_EXTRAS
-#endif
 };
 
 // define constructor - bool_const
@@ -694,9 +631,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef bool_const_EXTRAS
-      bool_const_EXTRAS
 #endif
 };
 
@@ -714,9 +648,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
 #endif
-#ifdef string_const_EXTRAS
-      string_const_EXTRAS
-#endif
 };
 
 // define constructor - new_
@@ -732,9 +663,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef new__EXTRAS
-      new__EXTRAS
 #endif
 };
 
@@ -752,9 +680,6 @@ public:
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
 #endif
-#ifdef isvoid_EXTRAS
-      isvoid_EXTRAS
-#endif
 };
 
 // define constructor - no_expr
@@ -768,9 +693,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef no_expr_EXTRAS
-      no_expr_EXTRAS
 #endif
 };
 
@@ -787,9 +709,6 @@ public:
 
 #ifdef Expression_SHARED_EXTRAS
   Expression_SHARED_EXTRAS
-#endif
-#ifdef object_EXTRAS
-      object_EXTRAS
 #endif
 };
 

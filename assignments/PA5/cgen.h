@@ -127,7 +127,7 @@ public:
   const HashMap<Symbol, int> &get_attrs_pos() { return attrs_pos; }
   HashMap<Symbol, int> inherit_attrs_pos() { return attrs_pos; }
   HashMap<Symbol, int> inherit_methods_pos() { return m_pos; }
-  std::vector<std::pair<Symbol, Symbol>>  inherit_method_layout() { return method_layout; }
+  std::vector<std::pair<Symbol, Symbol>> inherit_method_layout() { return method_layout; }
 
   // Calculate the prototype size.
   void cal_proto_size();

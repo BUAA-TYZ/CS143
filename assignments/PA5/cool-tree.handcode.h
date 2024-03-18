@@ -21,7 +21,7 @@ template <typename K> using HashSet = std::unordered_set<K>;
 // <Attr name, offset> Access with offset * WORD_SIZE($s0)
 using AttrEnv = const HashMap<Symbol, int> &;
 // Store the pos of variables except attrs.
-using SEnv = SymbolTable<Symbol, int>*;
+using SEnv = SymbolTable<Symbol, int> *;
 // <Class, <method, index>>
 using MEnv = const HashMap<Symbol, const HashMap<Symbol, int> &> &;
 
@@ -85,14 +85,15 @@ typedef Cases_class *Cases;
   virtual Symbol get_name() = 0;                                                                             \
   virtual void dump_with_types(ostream &, int) = 0;
 
-// # of temporary variables created by let, type... 
+// # of temporary variables created by let, type...
 #define Feature_SHARED_EXTRAS                                                                                \
-private:      \
-  int num_temp;   \
-public:     \
-  int get_num_temp() { return num_temp; }     \
-  void cal_num_temp();     \
-  void code(SEnv, int, CgenNode*, MEnv, ostream &);                                                                              \
+private:                                                                                                     \
+  int num_temp;                                                                                              \
+                                                                                                             \
+public:                                                                                                      \
+  int get_num_temp() { return num_temp; }                                                                    \
+  void cal_num_temp();                                                                                       \
+  void code(SEnv, int, CgenNode *, MEnv, ostream &);                                                         \
   Symbol get_name() override { return name; }                                                                \
   void dump_with_types(ostream &, int);
 
@@ -106,7 +107,9 @@ public:     \
   Symbol get_name() override { return name; }                                                                \
   void dump_with_types(ostream &, int);
 
-#define Case_EXTRAS virtual void dump_with_types(ostream &, int) = 0;
+#define Case_EXTRAS                                                                                          \
+  virtual int cal_num_temp() = 0;                                                                            \
+  virtual void dump_with_types(ostream &, int) = 0;
 
 #define branch_EXTRAS void dump_with_types(ostream &, int);
 
@@ -117,14 +120,14 @@ public:     \
     type = s;                                                                                                \
     return this;                                                                                             \
   }                                                                                                          \
-  virtual void code(SEnv, int, CgenNode*, MEnv, ostream &) = 0;                                                                          \
-  virtual int cal_num_temp() = 0;     \
+  virtual void code(SEnv, int, CgenNode *, MEnv, ostream &) = 0;                                             \
+  virtual int cal_num_temp() = 0;                                                                            \
   virtual void dump_with_types(ostream &, int) = 0;                                                          \
   void dump_type(ostream &, int);                                                                            \
   Expression_class() { type = (Symbol)NULL; }
 
 #define Expression_SHARED_EXTRAS                                                                             \
-  void code(SEnv, int, CgenNode*, MEnv, ostream &);                                                                                      \
+  void code(SEnv, int, CgenNode *, MEnv, ostream &);                                                         \
   void dump_with_types(ostream &, int);
 
 #endif

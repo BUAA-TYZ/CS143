@@ -603,9 +603,12 @@ void CgenClassTable::install_basic_classes() {
   // SELF_TYPE is the self class; it cannot be redefined or inherited.
   // prim_slot is a class known to the code generator.
   //
-  addid(No_class, new CgenNode(class_(No_class, No_class, nil_Features(), filename), Basic, this, INVALID_TAG));
-  addid(SELF_TYPE, new CgenNode(class_(SELF_TYPE, No_class, nil_Features(), filename), Basic, this, INVALID_TAG));
-  addid(prim_slot, new CgenNode(class_(prim_slot, No_class, nil_Features(), filename), Basic, this, INVALID_TAG));
+  addid(No_class,
+        new CgenNode(class_(No_class, No_class, nil_Features(), filename), Basic, this, INVALID_TAG));
+  addid(SELF_TYPE,
+        new CgenNode(class_(SELF_TYPE, No_class, nil_Features(), filename), Basic, this, INVALID_TAG));
+  addid(prim_slot,
+        new CgenNode(class_(prim_slot, No_class, nil_Features(), filename), Basic, this, INVALID_TAG));
 
   //
   // The Object class has no parent class. Its methods are
@@ -742,7 +745,7 @@ void CgenNode::set_parentnd(CgenNodeP p) {
 void CgenClassTable::set_class_index(CgenNodeP cur) {
   if (cur->get_name() == Int) {
     intclasstag = tag_index;
-  } else if (cur->get_name() == Str){
+  } else if (cur->get_name() == Str) {
     stringclasstag = tag_index;
   } else if (cur->get_name() == Bool) {
     boolclasstag = tag_index;
@@ -891,6 +894,10 @@ void CgenClassTable::code() {
   }
   code_prototype();
 
+  if (cgen_debug) {
+    cout << "coding objTab, nameTab, dispatchTab" << endl;
+  }
+
   code_class_objTab();
 
   code_class_nameTab();
@@ -961,7 +968,7 @@ void CgenNode::emit_methods(ostream &str) {
   method_layout = parentnd->inherit_method_layout();
   m_pos = parentnd->inherit_methods_pos();
 
-  for (auto [m_name, method]: methods) {
+  for (auto [m_name, method] : methods) {
     if (m_pos.find(m_name) != m_pos.end()) {
       method_layout[m_pos[m_name]].second = name;
     } else {
@@ -970,7 +977,7 @@ void CgenNode::emit_methods(ostream &str) {
     }
   }
 
-  for (auto [m_name, c_name]: method_layout) {
+  for (auto [m_name, c_name] : method_layout) {
     str << WORD;
     emit_method_ref(c_name, m_name, str);
     str << endl;
@@ -1018,7 +1025,12 @@ void CgenNode::emit_init(MEnv m_env, ostream &str) {
   auto sym_tab = new SymbolTable<Symbol, int>();
 
   str << name << CLASSINIT_SUFFIX << LABEL;
-  emit_start_frame(3, str);
+
+  int num_temp = 0;
+  for (auto [a_name, attr] : attrs) {
+    num_temp = max(num_temp, attr->get_num_temp());
+  }
+  emit_start_frame(DEFAULT_OBJFIELDS + num_temp, str);
   emit_addiu(FP, SP, 4, str);
   emit_move(SELF, ACC, str);
   if (name != Object) {
@@ -1034,7 +1046,7 @@ void CgenNode::emit_init(MEnv m_env, ostream &str) {
     attr_start_index++;
   }
   emit_move(ACC, SELF, str);
-  emit_end_frame(3, 3, str);
+  emit_end_frame(DEFAULT_OBJFIELDS + num_temp, DEFAULT_OBJFIELDS + num_temp, str);
 
   delete sym_tab;
 }
@@ -1072,7 +1084,9 @@ int CgenNode::get_sub_maxtag() {
     return res;
   }
   List<CgenNode> *l = children;
-  while (l->tl()) { l = l->tl(); }
+  while (l->tl()) {
+    l = l->tl();
+  }
   return l->hd()->get_sub_maxtag();
 }
 
@@ -1099,9 +1113,10 @@ void attr_class::cal_num_temp() { num_temp = init->cal_num_temp(); }
 void method_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
   o_pos->enterscope();
   // Record the formal pos
+  int n = formals->len();
   for (int i = formals->first(); formals->more(i); i = formals->next(i)) {
     auto f = formals->nth(i);
-    o_pos->addid(f->get_name(), new int(i + 3 + num_temp));
+    o_pos->addid(f->get_name(), new int(n - i - 1 + 3 + num_temp));
   }
   emit_start_frame(DEFAULT_OBJFIELDS + num_temp, s);
   emit_addiu(FP, SP, 4, s);
@@ -1135,7 +1150,7 @@ void static_dispatch_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEn
   emit_addiu(SP, SP, -n * WORD_SIZE, s);
   for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
     actual->nth(i)->code(o_pos, temp_index, node, m_pos, s);
-    emit_store(ACC, i + 1, SP, s);
+    emit_store(ACC, n - i, SP, s);
   }
 
   expr->code(o_pos, temp_index, node, m_pos, s);
@@ -1166,7 +1181,7 @@ void dispatch_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos
   }
   for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
     actual->nth(i)->code(o_pos, temp_index, node, m_pos, s);
-    emit_store(ACC, i + 1, SP, s);
+    emit_store(ACC, n - i, SP, s);
   }
 
   expr->code(o_pos, temp_index, node, m_pos, s);
@@ -1219,22 +1234,21 @@ void loop_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, os
 }
 
 void typcase_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
-  // Tag of class itself, pointer of class
-  std::vector<std::pair<CgenNodeP, branch_class*>> branches{};
+  // Tag of class itself, pointer of branch
+  std::vector<std::pair<CgenNodeP, branch_class *>> branches{};
 
   for (int i = cases->first(); cases->more(i); i = cases->next(i)) {
-    auto branch = (branch_class*)cases->nth(i);
+    auto branch = (branch_class *)cases->nth(i);
     CgenNodeP cur = node->get_cgen_tab()->probe(branch->type_decl);
     branches.emplace_back(cur, branch);
   }
 
-  sort(branches.begin(), branches.end(), [](const auto a, const auto b) {
-    return a.first->get_tag() > b.first->get_tag();
-  });
+  sort(branches.begin(), branches.end(),
+       [](const auto a, const auto b) { return a.first->get_tag() > b.first->get_tag(); });
 
   if (cgen_debug) {
     cout << "A CASE STATEMENT: " << endl;
-    for (auto [x, y]: branches) {
+    for (auto [x, y] : branches) {
       cout << '\t' << y->name << ":\t" << x->get_tag() << " " << x->get_sub_maxtag() << endl;
     }
   }
@@ -1250,6 +1264,7 @@ void typcase_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos,
   s << JAL << " _case_abort2" << endl;
 
   emit_label_def(begin_case, s);
+  emit_store(ACC, temp_index, FP, s);
   // load tag
   emit_load(T1, 0, ACC, s);
   // Preserve T1
@@ -1286,13 +1301,13 @@ void block_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, o
 }
 
 void let_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
-  o_pos->enterscope();
-  o_pos->addid(identifier, new int(temp_index));
   if (dynamic_cast<no_expr_class *>(init) != nullptr) {
     emit_default(type_decl, s);
   } else {
     init->code(o_pos, temp_index + 1, node, m_pos, s);
   }
+  o_pos->enterscope();
+  o_pos->addid(identifier, new int(temp_index));
   emit_store(ACC, temp_index, FP, s);
   body->code(o_pos, temp_index + 1, node, m_pos, s);
   o_pos->exitscope();
