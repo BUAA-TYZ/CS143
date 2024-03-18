@@ -1,8 +1,14 @@
 *.s
 *.o
+*.d
 grading
+test-output
 lexer
 cool-lex.*
 lextest.*
 
 .vscode
+
+bin
+etc
+lib
