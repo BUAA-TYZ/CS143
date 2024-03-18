@@ -48,8 +48,9 @@ private:
 
   void code_prototype();
   void code_class_nameTab();
-  void code_class_nameTab(List<CgenNode> *l);
+  void code_class_nameTab(CgenNodeP cur);
   void code_class_objTab();
+  void code_class_objTab(CgenNodeP cur);
   void code_dispatchTab();
 
   void code_initializer(MEnv);
@@ -91,7 +92,15 @@ private:
   std::vector<std::pair<Symbol, attr_class *>> attrs{};
 
   HashMap<Symbol, int> attrs_pos{};
+
+  // m_pos and method_layout are used together.
+  // We find a method by using `m_pos[m_name]`
+  // Then we can get it's owner by `method_layout[m_pos[m_name]]`
+
+  // Method name, it's offset
   HashMap<Symbol, int> m_pos{};
+  // Method name, Owner class
+  std::vector<std::pair<Symbol, Symbol>> method_layout{};
 
   CgenClassTableP cgen_tab;
 
@@ -118,6 +127,7 @@ public:
   const HashMap<Symbol, int> &get_attrs_pos() { return attrs_pos; }
   HashMap<Symbol, int> inherit_attrs_pos() { return attrs_pos; }
   HashMap<Symbol, int> inherit_methods_pos() { return m_pos; }
+  std::vector<std::pair<Symbol, Symbol>>  inherit_method_layout() { return method_layout; }
 
   // Calculate the prototype size.
   void cal_proto_size();

@@ -782,28 +782,36 @@ void CgenClassTable::code_prototype() {
 
 void CgenClassTable::code_class_nameTab() {
   str << CLASSNAMETAB << LABEL;
-  code_class_nameTab(nds);
+  code_class_nameTab(root());
 }
 
-void CgenClassTable::code_class_nameTab(List<CgenNode> *l) {
-  if (l->tl()) {
-    code_class_nameTab(l->tl());
-  }
-  auto *node = l->hd();
-  auto *entry = stringtable.lookup_string(node->get_name()->get_string());
+void CgenClassTable::code_class_nameTab(CgenNodeP cur) {
+  auto *entry = stringtable.lookup_string(cur->get_name()->get_string());
   str << WORD;
   entry->code_ref(str);
   str << endl;
+
+  auto children_list = cur->get_children();
+  for (List<CgenNode> *l = children_list; l; l = l->tl()) {
+    auto *node = l->hd();
+    code_class_nameTab(node);
+  }
 }
 
 void CgenClassTable::code_class_objTab() {
   str << CLASSOBJTAB << LABEL;
-  for (List<CgenNode> *l = nds; l; l = l->tl()) {
+  code_class_objTab(root());
+}
+
+void CgenClassTable::code_class_objTab(CgenNodeP cur) {
+  Symbol name = cur->get_name();
+  str << WORD << name << PROTOBJ_SUFFIX << endl;
+  str << WORD << name << CLASSINIT_SUFFIX << endl;
+
+  auto children_list = cur->get_children();
+  for (List<CgenNode> *l = children_list; l; l = l->tl()) {
     auto *node = l->hd();
-    auto name = node->get_name();
-    // Using idtable may be another way, but too slow.
-    str << WORD << name << PROTOBJ_SUFFIX << endl;
-    str << WORD << name << CLASSINIT_SUFFIX << endl;
+    code_class_objTab(node);
   }
 }
 
@@ -813,12 +821,19 @@ void CgenClassTable::code_class_objTab() {
 //
 //*****************************************************************
 
+// Use bfs because i don't want to add another func for dfs
 void CgenClassTable::code_dispatchTab() {
-  for (List<CgenNode> *l = nds; l; l = l->tl()) {
-    auto *node = l->hd();
-    auto *name = node->get_name()->get_string();
-    str << name << DISPTAB_SUFFIX << LABEL;
-    node->emit_methods(str);
+  auto cur = root();
+  std::deque<CgenNodeP> bfs{cur};
+  while (!bfs.empty()) {
+    cur = bfs.front();
+    str << cur->get_name() << DISPTAB_SUFFIX << LABEL;
+    cur->emit_methods(str);
+    bfs.pop_front();
+    for (List<CgenNode> *l = cur->get_children(); l; l = l->tl()) {
+      auto node = l->hd();
+      bfs.emplace_back(node);
+    }
   }
 }
 
@@ -943,26 +958,29 @@ int CgenNode::get_tag() const {
 }
 
 void CgenNode::emit_methods(ostream &str) {
-  // <Method name, it's owner class>
-  std::vector<std::pair<Symbol, Symbol>> class_method{};
-  HashSet<Symbol> used_methods{};
-  CgenNodeP cur = this;
-  while (cur->get_name() != No_class) {
-    auto c_methods = cur->get_methods();
-    for (auto iter = c_methods.rbegin(); iter != c_methods.rend(); ++iter) {
-      auto m_name = (*iter).first;
-      if (used_methods.count(m_name) != 0) {
-        continue;
-      }
-      used_methods.emplace(m_name);
-      class_method.emplace_back(m_name, cur->get_name());
+  method_layout = parentnd->inherit_method_layout();
+  m_pos = parentnd->inherit_methods_pos();
+
+  for (auto [m_name, method]: methods) {
+    if (m_pos.find(m_name) != m_pos.end()) {
+      method_layout[m_pos[m_name]].second = name;
+    } else {
+      m_pos.emplace(m_name, m_pos.size());
+      method_layout.emplace_back(m_name, name);
     }
-    cur = cur->get_parentnd();
   }
-  for (auto iter = class_method.rbegin(); iter != class_method.rend(); ++iter) {
+
+  for (auto [m_name, c_name]: method_layout) {
     str << WORD;
-    emit_method_ref((*iter).second, (*iter).first, str);
+    emit_method_ref(c_name, m_name, str);
     str << endl;
+  }
+
+  if (cgen_debug) {
+    cout << name << " METHODS: " << endl;
+    for (auto [m_name, c_name] : method_layout) {
+      cout << '\t' << c_name << " " << m_name << " at offset " << m_pos[m_name] << endl;
+    }
   }
 }
 
@@ -1024,20 +1042,14 @@ void CgenNode::emit_init(MEnv m_env, ostream &str) {
 void CgenNode::collect_pos() {
   CgenNodeP cur = parentnd;
   attrs_pos = cur->inherit_attrs_pos();
-  m_pos = cur->inherit_methods_pos();
 
   int attr_start_index = proto_size - attrs.size();
   for (auto [a_name, attr] : attrs) {
     attrs_pos.emplace(a_name, attr_start_index++);
   }
 
-  int method_start_index = m_pos.size();
-  for (auto [m_name, method] : methods) {
-    m_pos.emplace(m_name, method_start_index++);
-  }
-
   if (cgen_debug) {
-    cout << name << ": " << endl;
+    cout << name << " ATTR: " << endl;
     for (auto [a_name, a_pos] : attrs_pos) {
       cout << '\t' << name << " " << a_name << " " << a_pos << endl;
     }
@@ -1149,7 +1161,9 @@ void dispatch_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos
 
   // All subexprs must be evaluated before e0.
   int n = actual->len();
-  emit_addiu(SP, SP, -n * WORD_SIZE, s);
+  if (n != 0) {
+    emit_addiu(SP, SP, -n * WORD_SIZE, s);
+  }
   for (int i = actual->first(); actual->more(i); i = actual->next(i)) {
     actual->nth(i)->code(o_pos, temp_index, node, m_pos, s);
     emit_store(ACC, i + 1, SP, s);
@@ -1201,6 +1215,7 @@ void loop_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, os
   emit_label_ref(begin_loop, s);
   s << endl;
   emit_label_def(end_loop, s);
+  emit_move(ACC, ZERO, s);
 }
 
 void typcase_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
@@ -1444,17 +1459,35 @@ void bool_const_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_p
 }
 
 void new__class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
-  // Jump to the protoOb
-  emit_partial_load_address(ACC, s);
-  emit_protobj_ref(handle_SELF_TYPE(type_name, node->get_name()), s);
-  s << endl;
+  if (type_name == SELF_TYPE) {
+    //
+    emit_load_address(T1, CLASSOBJTAB, s);
+    emit_load(T2, 0, SELF, s);
+    emit_sll(T2, T2, 3, s);
+    emit_add(T1, T1, T2, s);
+    // Store the T1
+    emit_push(T1, s);
+    emit_load(ACC, 0, T1, s);
+  } else {
+    // Jump to the protoOb
+    emit_partial_load_address(ACC, s);
+    emit_protobj_ref(type_name, s);
+    s << endl;
+  }
   // Copy a new  Object
   s << JAL;
   emit_method_ref(Object, idtable.add_string("copy"), s);
   s << endl;
-  s << JAL;
-  emit_init_ref(handle_SELF_TYPE(type_name, node->get_name()), s);
-  s << endl;
+  if (type_name == SELF_TYPE) {
+    emit_get_top(T2, s);
+    emit_pop(1, s);
+    emit_load(T1, 1, T2, s);
+    emit_jalr(T1, s);
+  } else {
+    s << JAL;
+    emit_init_ref(type_name, s);
+    s << endl;
+  }
 }
 
 void isvoid_class::code(SEnv o_pos, int temp_index, CgenNodeP node, MEnv m_pos, ostream &s) {
